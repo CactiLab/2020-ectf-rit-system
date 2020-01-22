@@ -1,8 +1,6 @@
-# 2020 MITRE Collegiate eCTF Example Code
+# 2020 MITRE Collegiate eCTF RIT System
 
-This repository contains an example reference system for MITRE's 2020 [Embedded System CTF](http://mitrecyberacademy.org/competitions/embedded/). 
-This code is incomplete, insecure, and does not meet MITRE standards for quality.
-This code is being provided for educational purposes to serve as a simple example that meets the minimum functional requirements for the 2020 MITRE eCTF competition.
+This repository contains the RIT system for MITRE's 2020 [Embedded System CTF](http://mitrecyberacademy.org/competitions/embedded/). 
 Use this code at your own risk!
 
 ## Getting Started

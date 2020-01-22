@@ -1,33 +1,18 @@
 # 2020 MITRE Collegiate eCTF Getting Started
 
-Below is the overview of how to set up the reference implementation for the 2020 Collegiate eCTF.
+Below is the overview of how to set up the RIT implementation for the 2020 Collegiate eCTF.
 
 Please note: if any step fails, it is highly unlikely that the process will get back on track by continuing to future steps.
 
-## Creating Your Own Fork
-We suggest you create a fork of this repo so that you can begin to develop
-your solution to the eCTF. To do this, you must fork the repo, change your fork to the `origin`, and
-then add the MITRE repo as another remote. Follow these steps below.
+## Download the code
 
-1. Clone the eCTF repository using ssh or https 
+Clone the RIT eCTF repository using ssh or https 
 ```bash
-git clone https://github.com/mitre-cyber-academy/2020-ectf-insecure-example --recursive
+git clone git@github.com:CactiLab/2020-ectf-rit-system.git --recursive
 ``` 
-2. Change the current origin remote to another name
-```bash
-git remote rename origin mitre
-```
-
-3. Fork the MITRE repo on github (Note that you probably want to make the repo private for now so
-   that other teams cannot borrow your development ideas) 
-
-4. Add the fork as the new origin
-```bash
-git remote add origin <git_path>.git
-```
 
 You can now fetch and push as you normally would using `git fetch origin` and `git push origin`.
-If we push out updated code, you can fetch this new code using `git fetch mitre`.
+If MITRE pushes out updated code, you can fetch this new code using `git fetch mitre`.
 
 
 ## Download Xilinx Tools
