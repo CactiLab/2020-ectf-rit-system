@@ -16,6 +16,7 @@
 #include "constants.h"
 #include "sleep.h"
 
+#define RIT_DEBUG 1
 
 //////////////////////// GLOBALS ////////////////////////
 
@@ -511,6 +512,17 @@ int main() {
         if (InterruptProcessed) {
             InterruptProcessed = FALSE;
             set_working();
+
+#ifdef RIT_DEBUG
+
+    mb_printf("SHARED_DDR_BASE: %x\n", SHARED_DDR_BASE);
+    mb_printf("XPAR_RGB_PWM_0_PWM_AXI_BASEADDR: %x\n", XPAR_RGB_PWM_0_PWM_AXI_BASEADDR);
+    mb_printf("main(): %p\n", main);
+    mb_printf("digital_out(): %p\n", digital_out);
+    mb_printf("addr PIN: %p\n", s.pin);
+    mb_printf("PIN: %c%c%c%c%c%c%c%c\n", s.pin[0], s.pin[1], s.pin[2], s.pin[3], s.pin[4], s.pin[5], s.pin[6], s.pin[7]);
+
+#endif /* RIT_DEBUG */
 
             // c->cmd is set by the miPod player
             switch (c->cmd) {
