@@ -60,6 +60,12 @@ int memcmp(const void* s1, const void* s2, size_t n) {
 	return 0;
 }
 
+void* memzero(void* buf, size_t n) {
+	while (n)
+		((unsigned char*)buf)[--n] = 0;
+	return buf;
+}
+
 void* copytolocal(void* fpga_dest, const void* arm_src, size_t n) {
 #error define this function (xil_memcpy or something like that)
 	return NULL;
