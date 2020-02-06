@@ -1,0 +1,57 @@
+KDF:
+  scrypt/sha512, resulting in 32-byte secret key.  
+  This takes as inputs the (nul-padded if necessary) 64-pyte pin and a pregenerated per-user 64-byte salt.  
+
+DRM Header:  
+  [song id]
+  [wav data]
+  [owner]
+  [region]
+  [other metadata]
+  [signature using mipod key] <- contains all information above it
+  [shared user 0 ... shared user N]
+  [signature using owner key] <- contains all information above it
+  
+The following information will be securely stored and generated at build-time:
+  Encryption secret key
+  Mipod public key
+  Per-user salts
+  Per-user public keys
+  Per-user verification tokens (ie hashes/signatures)
+
+The following information will be discarded after the build process is completed:
+  Mipod public key
+
+The following algorithms will be used:
+  Hashing (KDF and signing) -> SHA512
+  Signatures -> EDDSA
+  Encryption -> ChaCha20
+	
+Communication:
+  Much like the reference implementation, communication will take place via gpio and shared buffers
+
+Login process:
+  client sends username+pin
+  fpga copies it locally and performs the kdf on the pin.
+  that is then used to compute a signature and checked against a known value
+  success/failure is returned to the client
+
+Play process:
+  client sends the contents of a drm file to the fpga
+  fpga copies the drm header and verifies its contents (good signature, song can be played for user/regions)
+  fpga copies sections of the song to local memory
+  each section is validated using the mipod public key
+  each validated section is then decrypted and played
+  should a section fail decryption or validation, the fpga stops playing the song
+
+Share process:
+  client sends the drm header to the fpga
+  fpga copies the contents locally
+  fpga verifies its validity (good signature, owner is logged in)
+  fpga checks the target user to ensure they exist on the local machine
+  fpga adds the target user to and signs the drm share section
+  fpga copies the drm header back to the client
+  client writes the header to the file
+
+Digitize process:
+  same as play process, except data is written back to the shared buffer instead of played as audio
