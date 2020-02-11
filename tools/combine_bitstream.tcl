@@ -19,7 +19,8 @@ set worksp "$dev_path/mb"
 set sw_mmi "$worksp/rit_pl_proj/system_wrapper.mmi"
 set sw_bit "$worksp/rit_pl_proj/system_wrapper.bit"
 set drm_elf "$worksp/drm_audio_fw/Debug/drm_audio_fw.elf"
-set output "$worksp/Cora-Z7-07S/download.bit"
+#set output "$worksp/Cora-Z7-07S/download.bit"
+set output "$worksp/rit_pl_proj/download.bit"
 
 puts "\nCalling updatemem as follows:
 updatemem -force -meminfo \
