@@ -14,8 +14,10 @@ if { $argc != 1 } {
 set dev_path [lindex $argv 0]
 set worksp "$dev_path/mb"
 
-set sw_mmi "$worksp/Cora-Z7-07S/system_wrapper.mmi"
-set sw_bit "$worksp/Cora-Z7-07S/system_wrapper.bit"
+#set sw_mmi "$worksp/Cora-Z7-07S/system_wrapper.mmi"
+#set sw_bit "$worksp/Cora-Z7-07S/system_wrapper.bit"
+set sw_mmi "$worksp/rit_pl_proj/system_wrapper.mmi"
+set sw_bit "$worksp/rit_pl_proj/system_wrapper.bit"
 set drm_elf "$worksp/drm_audio_fw/Debug/drm_audio_fw.elf"
 set output "$worksp/Cora-Z7-07S/download.bit"
 
