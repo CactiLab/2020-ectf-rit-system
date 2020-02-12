@@ -10,9 +10,9 @@
 
  ## Verified attacks
 
- 1. Based on https://www.xilinx.com/html_docs/xilinx2018_1/SDK_Doc/SDK_tasks/sdk_t_tcf_attach_debug_linux_kernel_tcf.html, we are able to debug the Linux system by using **Xilinx System Debugger**. And that makes it very easy to access the memory, even read and write to the block memory.
+ 1. Based on https://www.xilinx.com/html_docs/xilinx2018_1/SDK_Doc/SDK_tasks/sdk_t_tcf_attach_debug_linux_kernel_tcf.html, we are able to debug the board by using **Xilinx System Debugger**. And that makes it very easy to access the memory, even read and write to the block memory.
  * Attack steps:
-    * Step1: Using Xilinx System Dubegger connect the Linux system
+    * Step1: Using Xilinx System Dubegger to connect the board
     * Step2: Finding out the address we want to access
     * Step3: Access the address (read and write)
 
