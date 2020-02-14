@@ -165,7 +165,7 @@ struct {
 /*
 checks to see if the shared user entry at <idx_> is in use.
 */
-#define CURRENT_DRM_SHARED_EMPTY_SLOT(idx_) (current_song_header.shared_users[idx][0] == '0')
+#define CURRENT_DRM_SHARED_EMPTY_SLOT(idx_) (current_song_header.shared_users[idx_][0] == '0')
 
 struct mipod_login_data {
     char name[UNAME_SIZE]; //the username of the requested user
