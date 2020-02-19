@@ -1,5 +1,5 @@
 KDF:
-  scrypt/sha512, resulting in 32-byte secret key.  
+  PBKDF2+sha512, resulting in 32-byte secret key.  
   This takes as inputs the (nul-padded if necessary) 64-pyte pin and a pregenerated per-user 64-byte salt.  
 
 DRM Header:  
@@ -13,7 +13,7 @@ DRM Header:
   [signature using owner key] <- contains all information above it
   
 The following information will be securely stored and generated at build-time:
-  Encryption secret key
+  Encryption secret key (in-bitstream w/hardware AES)
   Mipod public key
   Per-user salts
   Per-user public keys
@@ -25,7 +25,7 @@ The following information will be discarded after the build process is completed
 The following algorithms will be used:
   Hashing (KDF and signing) -> SHA512
   Signatures -> EDDSA
-  Encryption -> ChaCha20
+  Encryption -> AES-CBC with 128-bit keys
 	
 Communication:
   Much like the reference implementation, communication will take place via gpio and shared buffers
