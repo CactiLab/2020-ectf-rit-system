@@ -9,15 +9,31 @@
 \usepackage{listings}
 \usepackage{courier}
 
+\usepackage{parskip}
+
 \usepackage{xcolor} % for setting colors
 
-% set the default code style
-% \lstset{
-%     frame=tb, % draw a frame at the top and bottom of the code block
-% }
+% Colors
+\definecolor{lightgray}{gray}{0.95}
+\definecolor{commentgreen}{rgb}{0,0.6,0}
+
+% Code
+\lstdefinestyle{manual_code}{%
+	tabsize=4,
+	backgroundcolor=\color{lightgray},
+	commentstyle=\small\color{commentgreen},
+	keywordstyle=\color{blue},
+	basicstyle=\ttfamily\small,
+	showtabs=false,
+    showspaces=false,
+    showstringspaces=false,
+	breaklines=true,
+	postbreak=\mbox{\textcolor{red}{$\hookrightarrow$}\space},
+}
+
 
 \title{Secure Audio DRM: System Design}
-\author{RIT Team Name}
+\author{Cacti}
 \date{}
 
 \begin{document}
@@ -25,28 +41,28 @@
 \maketitle
 
 \section{System Workflow and Overview}
-At a high level, our system encrypts songs and authenticate users to play songs. 
+At a high level, our system encrypts songs and authenticates users to play the songs.
 In particular, we take the following steps to modify the insecure system.
 
 \subsection{Application Design}
 
 \begin{enumerate}
-    \item DRM Header design: 
-    \begin{lstlisting}[language=C, label={lst:cache}]
+    \item DRM Header design:
+    \begin{lstlisting}[language=C, label={lst:cache}, style=manual_code]
 struct wav_header {
-    char chunkID[4]; 
-    uint32_t chunk_size; 
-    char format[4]; 
-    char subchunk1ID[4]; 
-    uint32_t subchunk1_size; 
-    uint16_t audio_fmt; 
-    uint16_t n_channels; 
-    uint32_t samplerate; 
-    uint32_t byterate; 
-    uint16_t blk_align; 
-    uint16_t bits_per_sample; 
-    char subchunk2ID[4]; 
-    uint32_t subchunk2_size; 
+    char chunkID[4];
+    uint32_t chunk_size;
+    char format[4];
+    char subchunk1ID[4];
+    uint32_t subchunk1_size;
+    uint16_t audio_fmt;
+    uint16_t n_channels;
+    uint32_t samplerate;
+    uint32_t byterate;
+    uint16_t blk_align;
+    uint16_t bits_per_sample;
+    char subchunk2ID[4];
+    uint32_t subchunk2_size;
 };
     \end{lstlisting}
 
@@ -58,25 +74,25 @@ struct wav_header {
         \item Per-user public keys
         \item Per-user verification tokens (ie hashes/signatures)
     \end{itemize}
-    
+
     \item The following information will be discarded after the build process is completed: Mipod public key.
-    
-    \item The following algorithms will be used: 
+
+    \item The following algorithms will be used:
     \begin{itemize}
-        \item Hashing (KDF and signing) $\rightarrow$ SHA512; 
+        \item Hashing (KDF and signing) $\rightarrow$ SHA512;
             \begin{itemize}
-                \item PBKDF2+sha512, resulting in 32-byte secret key.  
-                \item This takes as inputs the (nul-padded if necessary) 64-byte pin and a pregenerated per-user 64-byte salt. 
+                \item PBKDF2+sha512, resulting in 32-byte secret key.
+                \item This takes as inputs the (nul-padded if necessary) 64-byte pin and a pregenerated per-user 64-byte salt.
             \end{itemize}
-        \item Signatures $\rightarrow$ EDDSA; 
+        \item Signatures $\rightarrow$ EDDSA;
         \item Encryption $\rightarrow$ AES-CBC with 128-bit keys
     \end{itemize}
 
     \item Communication:  Much like the reference implementation, communication will take place via gpio and shared buffers
-    
-    \item Login process: client sends username+pin, fpga copies it locally and performs the kdf on the pin. 
+
+    \item Login process: client sends username+pin, fpga copies it locally and performs the kdf on the pin.
     that is then used to compute a signature and checked against a known value success/failure is returned to the client.
-    
+
     \item Play process:
     \begin{itemize}
         \item Client sends the contents of a drm file to the fpga
@@ -97,15 +113,16 @@ struct wav_header {
         \item Fpga copies the drm header back to the client
         \item Client writes the header to the file
     \end{itemize}
-    
+
     \item Digitize process: same as play process, except data is written back to the shared buffer instead of played as audio
 \end{enumerate}
 
 % \subsection{Encryption Songs}
 
-\subsection{Firmware Design}
-We remove the MDM block and disable the debug on MicroBlaze, disable Ethernet 0 port on the Zynq processor.
+\subsection{Hardware Design}
+We removed the MDM block, disabled the debug module on the MicroBlaze, and disabled the Ethernet 0 port and other unnecessary peripherals on the Zynq processor.
 
-We will generate a block on the firmware to do encryption.
+We have also created a hardware AES block which we can use to encrypt and decrypt parts of the songs as the application runs.
+The key for this will be coded directly into the hardware at the time which we generate the bitstream.
 
 \end{document}
