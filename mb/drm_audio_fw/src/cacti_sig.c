@@ -1,6 +1,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "crypto_sign_ed25519.h" //gen_keypair, etc
+#error todo: xilinx headers, util.c/h
+
 #ifdef _MSC_VER
 #pragma region memops_defines
 #endif
@@ -43,6 +46,22 @@ void* copytolocal(void* fpga_dest, const void* arm_src, size_t n);
 #ifdef _MSC_VER
 #pragma endregion
 #endif
+
+#ifdef _MSC_VER
+#pragma region crypto_defines
+#endif // _MSC_VER
+
+#define KDF_SALTSIZE 16
+#define KDF_OUTSIZE 64
+/*
+performs the pbkdf2 function on the pasword <pw> with length <pwlen>, using a salt <salt>.
+writes the derived key into <out>
+*/
+void pbkdf2(uint8_t pw, size_t pwlen, uint8_t salt[KDF_SALTSIZE], uint8_t out[KDF_OUTSIZE]);
+
+#ifdef _MSC_VER
+#pragma endregion
+#endif // _MSC_VER
 
 #ifndef offsetof
 #define offsetof(st, m) ((size_t)&(((st *)0)->m))
@@ -219,17 +238,16 @@ static uint8_t pin_buffer[PIN_SIZE]; //used for the current pin being tested.
 static uint8_t dsa_key_buffer[EDDSA_SECRET_SIZE]; //used for the current user's private key.
 static uint32_t current_uid = INVALID_UID;
 
-static const mipod_pubkey[EDDSA_PUBLIC_SIZE]; //align this, should also be in secrets.h
+static const mipod_pubkey[EDDSA_PUBLIC_SIZE]; //public signing key for the firmware
 
 static struct drm_header current_song_header;
 static struct mipod_buffer* const mipod_in; //this ends up as a constant address
 #define set_status_success() do{mipod_in->status=STATE_SUCCESS;}while(0)
 #define set_status_failed() do{mipod_in->status=STATE_FAILED;}while(0)
-static void* const segment_buffer = -1; 
-static void* const scrypt_buffer = segment_buffer; //this has to be changed to be the actual address and not something else
-#define SEGMENT_BUF_SIZE 0x100000 //1 mib
+static void* const segment_buffer = -1; //
+#define SEGMENT_BUF_SIZE 0x10000 //64 KB
 #define SEGMENT_SONG_SIZE (SEGMENT_BUF_SIZE - sizeof(struct segment_trailer))
-#define SCRYPT_BUF_SIZE SEGMENT_BUF_SIZE //1 mib (this may be desired to go up/down depending on how the bram ends up working)
+#error set constants address (segment_buffer, mipod_id)
 
 enum PLAY_OPS {
     PLAYER_PLAY=0,
@@ -254,8 +272,8 @@ static volatile uint8_t music_op = PLAYER_NONE; //the current operation the musi
 #define stop_working() working=false
 
 #ifdef __GNUC__ //using inline asm ensures that the memset calls won't be optimized away.
-#define clear_buffer(buf_) do{ memzero((buf_),sizeof(buf_)); __asm__(""); }while(0)
-#define clear_obj(obj_) do{ memzero(&(obj_),sizeof(obj_); __asm__(""); }while(0)
+#define clear_buffer(buf_) do{ memzero((buf_),sizeof(buf_)); __asm__ volatile ("" ::: "memory"); }while(0)
+#define clear_obj(obj_) do{ memzero(&(obj_),sizeof(obj_); __asm__ volatile ("" ::: "memory"); }while(0)
 #else
 #define clear_buffer(buf_) memzero(buf_,sizeof(buf_))
 #define clear_obj(obj_) memzero(&(obj_),sizeof(obj_))
@@ -263,27 +281,24 @@ static volatile uint8_t music_op = PLAYER_NONE; //the current operation the musi
 
 struct user {
     char name[UNAME_SIZE]; //the username. this is used to check song owners/shared withs.
-    //size_t argon_itr; //the iterations to use in the argon-2 algorithm (t_cost).
-    //size_t argon_bytes; //the amount of memory, in bytes, to feed to argon2 (m_cost).
-    //uint8_t argon_salt[SALT_SIZE]; //the salt to pass to the argon2 function.
-    uint8_t kpublic[PKEY_SIZE]; //the user's public key
+    uint8_t salt[SALT_SIZE]; //the salt to pass to the hash function.
+    uint8_t kpublic[PKEY_SIZE]; //the user's public key.
 }; //these should be set as const in the secrets header file.
 
 static struct user provisioned_users[MAX_USERS];
-static uint32_t provisioned_regions[MAX_REGIONS] = { INVALID_RID }; //for now, initialize them all to be invalid.
+static uint32_t provisioned_regions[MAX_REGIONS] = { INVALID_RID }; //for now, initialize them all to be invalid. (may require 32x INVALID_RID)
+#error these two should be in a secrets.h file (along with MAX_USERS/REGIONS maybe, idk where they are used)
 
 #ifdef _MSC_VER
 #pragma region interrupt_handler
 #endif // _MSC_VER
 
-static void enable_interrupts(void) {
-#error todo 
-    //inline-gcc asm
+static void disable_interrupts(void) {
+    microblaze_disable_interrupts(); //from xilinx headers
 }
 
-static void disable_interrupts(void) {
-#error todo
-    //inline gcc asm
+static void enable_interrupts(void) {
+    microblaze_enable_interrupts(); //from xilinx headers
 }
 
 /*
@@ -316,7 +331,6 @@ static bool is_command_ok(uint32_t c) {
 
 //need to put special attributes on here
 void gpio_entry() {
-#error check to see if xil_XYZ ops (particularly the dma audio playing // xil_memcpy) needs interrupts
     disable_interrupts();
     
     /*
@@ -355,6 +369,49 @@ void gpio_entry() {
 #endif // _MSC_VER
 
 #ifdef _MSC_VER
+#pragma region main
+#endif // _MSC_VER
+
+int main() {
+    uint32_t status;
+#error todo: add xilinx header linking
+    static XIntc InterruptController;
+
+    init_platform();
+    microblaze_register_handler((XInterruptHandler)gpio_entry, NULL);
+    microblaze_enable_interrupts();
+
+    // Initialize the interrupt controller driver so that it is ready to use.
+    status = XIntc_Initialize(&InterruptController, XPAR_INTC_0_DEVICE_ID);
+    if (status != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
+
+    // Set up the Interrupt System.
+    status = SetUpInterruptSystem(&InterruptController, (XInterruptHandler)gpio_entry);
+    if (status != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
+
+    // Congigure the DMA
+    status = fnConfigDma(&sAxiDma);
+    if (status != XST_SUCCESS) {
+        return XST_FAILURE;
+    }
+
+    clear_obj(mipod_in);
+
+    for (;;) usleep(500); //we don't do any work in here. (or maybe this should just wait for play song?)
+
+    cleanup_platform();
+    return 0;
+}
+
+#ifdef _MSC_VER
+#pragma endregion
+#endif // _MSC_VER
+
+#ifdef _MSC_VER
 #pragma region wav_info
 #endif
 
@@ -386,21 +443,9 @@ static bool valid_region(uint32_t rid) {
 #pragma endregion 
 #endif
 
-#ifdef _MSC_VER //TODO: all of it, plus some libsodium implementations
+#ifdef _MSC_VER //TODO: strip libsodium, implement decrypt_segment_data (for play_segment)
 #pragma region crypto_sign
 #endif // _MSC_VER
-
-/*
-when using libsodium:
-the actual "secret" part of the secret key is the first 32 bytes (what we derive)
-the second 32 is the public key
-
-passing it to libsodium would just require combining the two in a local buffer
-the message signatures algorithms do have the message hashed in them, so we just have to call sign() and verify()
-
-the sign/verify detached ones are what we want. 
-we also have to partially modify them so that they can take a prefix (adding song id + segment index to segments)
-*/
 
 /*
 verify a data signature using the MIPOD public key.
@@ -409,8 +454,8 @@ data layout looks like:
 [....data....][signature]
 ^-data_start  ^-sig_offset
 */
-bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
-    return false;
+static bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
+    return !crypto_sign_ed25519_verify_detached((uint8_t*)data_start + sig_offset, data_start, sig_offset, mipod_pubkey);
 }
 
 /*
@@ -421,8 +466,8 @@ data layout looks like:
 ^-data_start  ^-sig_offset
 */
 static bool verify_user_blocksig(void* data_start, size_t sig_offset, uint32_t uid) {
-    //void* owner_key = get_user_pubkey(uid);
-    return false;
+    //returns 0 for success
+    return !crypto_sign_ed25519_verify_detached((uint8_t*)data_start + sig_offset, data_start, sig_offset, provisioned_users[uid].kpublic);
 }
 
 /*
@@ -433,7 +478,7 @@ data layout looks like:
 ^-data_start  ^-sig_offset
 */
 static bool sign_user_block(void* data_start, size_t sig_offset) {
-    return false;
+    return !crypto_sign_ed25519_detached((uint8_t*)data_start + sig_offset, NULL, data_start, sig_offset, dsa_key_buffer);
 }
 
 /*
@@ -443,6 +488,7 @@ returns the actual length of the decrypted data (removing padding, for example)
 <start> = start of segment.
 */
 static size_t decrypt_segment_data(void* start, size_t len) {
+#error todo
     return 0;
 }
 
@@ -474,32 +520,29 @@ static uint32_t get_uid_by_name(const char username[UNAME_SIZE]) {
     return INVALID_UID;
 }
 
-void get_user_salt(uint32_t uid) {
-    return;
-}
-
 /*
-perform the argon2 hash on the user pin
+perform the pbkdf2 function on the key and copy it to 
 uid is the user to do so on. IDK if uid is actually something that we will use.
+returns true/false for if the user is OK or not.
 */
-void gen_user_secret(uint32_t uid) {
-    //TODO: ?scrypt//argon2? hash here. should hash into the dsa_key_buffer.
-    return;
-}
-
-/*
-checks to ensure the user is valid (ie their key works on something?)
-returns true/false for success/failure
-*/
-bool valid_user(uint32_t uid) {
-
-}
-
-/*
-copies the user's public key into <kout>
-*/
-static void get_user_pubkey(uint32_t uid,uint8_t kout[EDDSA_PUBLIC_SIZE]) {
-    memcpy(kout, provisioned_users[uid].kpublic, EDDSA_PUBLIC_SIZE);
+bool gen_check_user_secret(uint32_t uid) {
+    uint8_t kb[KDF_OUTSIZE]; //derived key buffer
+    pbkdf2(pin_buffer, sizeof(pin_buffer), provisioned_users[uid].salt, kb); //note: this doesnt use the full output in keypair generation
+    clear_obj(pin_buffer);
+    uint8_t pkb[EDDSA_SECRET_SIZE + EDDSA_PUBLIC_SIZE]; //DSA key buffer
+    //we have to pass args like this because keypair writes are SECRET_SIZE + PUBLIC_SIZE to *sk, not just SECRET_SIZE
+    crypto_sign_ed25519_seed_keypair(&pkb[EDDSA_SECRET_SIZE], pkb, kb); // see keypair.c
+    //important note: public/private key generation is deterministic, which is why this works
+    clear_obj(kb);
+    if (!memcmp(pkb, provisioned_users[uid].kpublic, EDDSA_PUBLIC_SIZE)) { //everything is good
+        memcpy(dsa_key_buffer, pkb, EDDSA_SECRET_SIZE); //note: this is a hash of the random derived seed that went in.
+        clear_obj(pkb);
+        return true;
+    }
+    else { //somebody is being naughty...
+        clear_obj(pkb); //better safe than sorry
+        return false;
+    }
 }
 
 #ifdef _MSC_VER
@@ -537,14 +580,9 @@ bool login_user(void) {
         }
     }
 
-    //creates the derived key
-    gen_user_secret(user);
-
-    clear_buffer(pin_buffer); //not strictly needed, but better safe than sorry I guess.
-
     //if everything is fine, go ahead and log them in.
-    if (!valid_user(user)) {
-        clear_buffer(dsa_key_buffer);
+    if (!gen_check_user_secret(user)) {
+        clear_buffer(dsa_key_buffer); //this already gets cleared but w/e
         return false;
     }
     else {
@@ -782,6 +820,7 @@ static bool play_song(void) {
         bytes_max = SONGLEN_30S;
         break;
     case(SONG_BADSIG):;
+        unload_song_header();
         return false;
     case(SONG_OWNER):
     case(SONG_SHARED):; //we can play the full song
@@ -790,6 +829,7 @@ static bool play_song(void) {
     default:__builtin_unreachable();
 #endif
     }
+    mipod_in->status = STATE_PLAYING; //no racing here
     enable_interrupts();
 restart_playing:;
     mipod_in->status = STATE_PLAYING;
@@ -828,6 +868,7 @@ restart_playing:;
             case(PLAYER_RESTART): //reset the song state to the beginning and then start playing again
                 music_op = PLAYER_PLAY;
                 offset = 0;
+                //played = 0; <- set as part of for loop
                 goto restart_playing; //sets state to playing
 #if 0
             case(PLAYER_FORWARD):break; //do some math, set offset/etc to +5s, skip there (maybe loading some more segments)
