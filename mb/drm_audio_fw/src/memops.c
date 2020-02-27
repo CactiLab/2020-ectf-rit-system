@@ -1,6 +1,8 @@
 
 #include <stdint.h>
 
+#ifndef _MSC_VER //msvc has these as builtin functions
+
 void* memset(void* buf, int c, size_t n) {
 	uint8_t* b = buf;
 	while (n) {
@@ -13,7 +15,7 @@ void* memset(void* buf, int c, size_t n) {
 void* memcpy(void* dest, const void* src, size_t n) {
 	uint8_t* s = src, * d = dest;
 	if (n) { //deal with 0-length copy
-		--n; 
+		--n;
 		do {
 			d[n] = s[n];
 			--n;
@@ -60,6 +62,8 @@ int memcmp(const void* s1, const void* s2, size_t n) {
 	return 0;
 }
 
+#endif // !_MSC_VER
+
 void* memzero(void* buf, size_t n) {
 	while (n)
 		((unsigned char*)buf)[--n] = 0;
@@ -67,11 +71,53 @@ void* memzero(void* buf, size_t n) {
 }
 
 void* copytolocal(void* fpga_dest, const void* arm_src, size_t n) {
-#error define this function (xil_memcpy or something like that)
-	return NULL;
+#pragma message("define this function (xil_memcpy or something like that)")
+	return memmove(fpga_dest, arm_src, n);
 }
 
 void* copyfromlocal(void* arm_dest, const void* fpga_src, size_t n) {
-#error define this function (xil_memcpy or something like that)
-	return NULL;
+#pragma message("define this function (xil_memcpy or something like that)")
+	return memmove(arm_dest, fpga_src, n);
+#ifndef _MSC_VER
+#error need to implement copyfromlocal and copytolocal
+#endif // !_MSC_VER
+
+}
+
+//taken from utils.c
+
+
+int
+sodium_memcmp(const void* const b1_, const void* const b2_, size_t len) {
+	const volatile unsigned char* volatile b1 = b1_;
+	const volatile unsigned char* volatile b2 = b2_;
+
+	size_t                 i;
+	volatile unsigned char d = 0U;
+
+	for (i = 0U; i < len; i++) {
+		d |= b1[i] ^ b2[i];
+	}
+	return (1 & ((d - 1) >> 8)) - 1;
+}
+
+int
+sodium_is_zero(const unsigned char* n, const size_t nlen) {
+	size_t                 i;
+	volatile unsigned char d = 0U;
+
+	for (i = 0U; i < nlen; i++) {
+		d |= n[i];
+	}
+	return 1 & ((d - 1) >> 8);
+}
+
+void
+sodium_memzero(void* const pnt, const size_t len) {
+	volatile unsigned char* volatile pnt_ = pnt;
+	size_t i = (size_t)0U;
+
+	while (i < len) {
+		pnt_[i++] = 0U;
+	}
 }

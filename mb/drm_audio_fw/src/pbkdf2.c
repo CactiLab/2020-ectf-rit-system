@@ -1,6 +1,6 @@
 
 #include <stdint.h>
-#include "memops.c"
+#include "memops.h"
 #include "crypto_hash_sha512.h"
 
 //below uses SHA2-512 from libsodium. would like to use SHA3-512 at some point but oh well
@@ -47,7 +47,7 @@ function hmac is
     return hash(o_key_pad || hash(i_key_pad || message)) // Where || is concatenation
 */
 
-void hmac(uint8_t key[HASH_BLKSIZE], uint8_t* msg, size_t msgsize, uint8_t out[HASH_OUTSIZE]) {
+void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t out[HASH_OUTSIZE]) {
     hash_state_t state;
     uint8_t tmp[HASH_OUTSIZE];
 
@@ -158,7 +158,7 @@ Uc = PRF(Password, Uc-1)
 performs the pbkdf2 function on the pasword <pw> with length <pwlen>, using a salt <salt>.
 writes the derived key into <out>
 */
-void pbkdf2(uint8_t pw, size_t pwlen, uint8_t salt[KDF_SALTSIZE], uint8_t out[KDF_OUTSIZE]) {
+void pbkdf2(const uint8_t * pw, size_t pwlen, const uint8_t salt[KDF_SALTSIZE], uint8_t out[KDF_OUTSIZE]) {
     //note: i is the ith iteration
     uint8_t tmp[HASH_OUTSIZE];
     //we don't do the i padding because we only generate with DK=Hlen, thus i never changes and no security is lost.

@@ -1,54 +1,15 @@
 #include <stdint.h>
 #include <stdbool.h>
 
+#include "secrets.h"
+#include "constants.h"
+#include "memops.h"
+
 #include "crypto_sign_ed25519.h" //gen_keypair, etc
-#error todo: xilinx headers, util.c/h
+//#error todo: xilinx headers, util.c/h
 
 #ifdef _MSC_VER
-#pragma region memops_defines
-#endif
-//see memops.c for implementation
-/*
-returns buf.
-*/
-void* memset(void* buf, int c, size_t n);
-/*
-returns dest.
-src and dest MAY NOT overlap.
-*/
-void* memcpy(void* dest, const void* src, size_t n);
-/*
-returns dest.
-src and dest MAY overlap.
-*/
-void* memmove(void* dest, const void* src, size_t n);
-/*
-returns:
-    + if s1>s2
-    0 if s1==s2
-    - if s1<s2
-*/
-int memcmp(const void* s1, const void* s2, size_t n);
-/*
-returns buf.
-zeroes the memory at buf
-*/
-void* memzero(void* buf, size_t n);
-/*
-copies memory from fpga-only memory to a shared memory section the arm processor can access.
-*/
-void* copyfromlocal(void* arm_dest, const void* fpga_src, size_t n);
-/*
-copies memory from shared arm-accessible space to fpga-only ram.
-*/
-void* copytolocal(void* fpga_dest, const void* arm_src, size_t n);
-
-#ifdef _MSC_VER
-#pragma endregion
-#endif
-
-#ifdef _MSC_VER
-#pragma region crypto_defines
+#pragma region pbkdf_defines
 #endif // _MSC_VER
 
 #define KDF_SALTSIZE 16
@@ -57,7 +18,7 @@ void* copytolocal(void* fpga_dest, const void* arm_src, size_t n);
 performs the pbkdf2 function on the pasword <pw> with length <pwlen>, using a salt <salt>.
 writes the derived key into <out>
 */
-void pbkdf2(uint8_t pw, size_t pwlen, uint8_t salt[KDF_SALTSIZE], uint8_t out[KDF_OUTSIZE]);
+void pbkdf2(uint8_t * pw, size_t pwlen, const uint8_t salt[KDF_SALTSIZE], uint8_t out[KDF_OUTSIZE]);
 
 #ifdef _MSC_VER
 #pragma endregion
@@ -72,33 +33,6 @@ void pbkdf2(uint8_t pw, size_t pwlen, uint8_t salt[KDF_SALTSIZE], uint8_t out[KD
 #ifndef max
 #define max(a,b) (((a)>(b))?(a):(b))
 #endif // !max
-
-
-
-//from constants.h mitre file:
-#define MAX_SONG_SZ (1<<25) //33554432 == 32 mib (more than system ram lol)
-
-#define PKEY_SIZE 32 //see: eddsa keygen
-#define UNAME_SIZE 16 //see: ectf requirements (it is actually 15, but each name is nul-padded to 16 for obvious reasons)
-#define SALT_SIZE 16 //see: common sense
-#define PIN_SIZE 64 //see: ectf requirements
-
-#define ARGON2_THREADS 1
-#define ARGON2_LANES 1
-#define INVALID_UID -1
-#define MAX_SHARED_USERS MAX_USERS //see: ectf requirements, 3.3.5
-#define MAX_USERS 64
-
-#define EDDSA_SECRET_SIZE 32 //I think it may actually be 64, but it looks like 1/2 of that is the "random" number generated and 1/2 the public key, so who knows?
-#define EDDSA_PUBLIC_SIZE 32
-#define SODIUM_EDDSA_SECRET_SIZE (EDDSA_SECRET_SIZE + EDDSA_PUBLIC_SIZE)
-#define EDDSA_SIG_SIZE 64 
-
-#define CIPHER_BLOCKSIZE 64 //the block size of the stream cipher being used for song encryption.
-//useage of chacha20 or aes-256 is recommended.
-
-#define MAX_REGIONS 32
-#define INVALID_RID -1
 
 enum mipod_ops {
     MIPOD_PLAY=0,
@@ -153,7 +87,7 @@ struct wav_header {
 struct drm_header { //sizeof() = 1368
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
     char owner[UNAME_SIZE]; //the owner's name.
-    uint32_t regions[MAX_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
+    uint32_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
     //song metadata
     uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
     uint32_t nr_segments; //the number of segments in the song
@@ -198,8 +132,8 @@ struct mipod_play_data {
 };
 
 struct mipod_query_data {
-    uint32_t rids[MAX_REGIONS]; //holds all valid region IDS. the actual region strings should be stored client-side.
-    char users_list[UNAME_SIZE][MAX_USERS]; //holds all valid users.
+    uint32_t rids[MAX_QUERY_REGIONS]; //holds all valid region IDS. the actual region strings should be stored client-side.
+    char users_list[UNAME_SIZE][TOTAL_USERS]; //holds all valid users.
     /*
     Initial boot output :
         mP> Regions: USA, Canada, Mexico\r\n` `mP> Authorized users: alice, bob, charlie, donna\r\n
@@ -238,16 +172,11 @@ static uint8_t pin_buffer[PIN_SIZE]; //used for the current pin being tested.
 static uint8_t dsa_key_buffer[EDDSA_SECRET_SIZE]; //used for the current user's private key.
 static uint32_t current_uid = INVALID_UID;
 
-static const mipod_pubkey[EDDSA_PUBLIC_SIZE]; //public signing key for the firmware
-
 static struct drm_header current_song_header;
-static struct mipod_buffer* const mipod_in; //this ends up as a constant address
+static struct mipod_buffer* const mipod_in = (void*)SHARED_DDR_BASE;  //this ends up as a constant address
 #define set_status_success() do{mipod_in->status=STATE_SUCCESS;}while(0)
 #define set_status_failed() do{mipod_in->status=STATE_FAILED;}while(0)
-static void* const segment_buffer = -1; //
-#define SEGMENT_BUF_SIZE 0x10000 //64 KB
-#define SEGMENT_SONG_SIZE (SEGMENT_BUF_SIZE - sizeof(struct segment_trailer))
-#error set constants address (segment_buffer, mipod_id)
+static void* const segment_buffer[SEGMENT_BUF_SIZE]; //the memory buffer that we copy our data to (either constant address or array, idk yet)
 
 enum PLAY_OPS {
     PLAYER_PLAY=0,
@@ -279,26 +208,25 @@ static volatile uint8_t music_op = PLAYER_NONE; //the current operation the musi
 #define clear_obj(obj_) memzero(&(obj_),sizeof(obj_))
 #endif
 
-struct user {
-    char name[UNAME_SIZE]; //the username. this is used to check song owners/shared withs.
-    uint8_t salt[SALT_SIZE]; //the salt to pass to the hash function.
-    uint8_t kpublic[PKEY_SIZE]; //the user's public key.
-}; //these should be set as const in the secrets header file.
-
-static struct user provisioned_users[MAX_USERS];
-static uint32_t provisioned_regions[MAX_REGIONS] = { INVALID_RID }; //for now, initialize them all to be invalid. (may require 32x INVALID_RID)
-#error these two should be in a secrets.h file (along with MAX_USERS/REGIONS maybe, idk where they are used)
-
 #ifdef _MSC_VER
 #pragma region interrupt_handler
 #endif // _MSC_VER
 
 static void disable_interrupts(void) {
+#ifdef __GNUC__
+#error need to link in xilinx headers
     microblaze_disable_interrupts(); //from xilinx headers
+#else
+    (void)0;
+#endif // __GNUC__
 }
 
 static void enable_interrupts(void) {
+#ifdef __GNUC__
     microblaze_enable_interrupts(); //from xilinx headers
+#else
+    (void)0;
+#endif // __GNUC__
 }
 
 /*
@@ -328,6 +256,20 @@ static bool is_command_ok(uint32_t c) {
     default: return false;
     }
 }
+
+static void pause_song(void);
+static void resume_song(void);
+static void stop_song(void);
+static void restart_song(void);
+static void forward_song(void);
+static void rewind_song(void);
+
+static bool play_song(void);
+static bool login_user(void);
+static bool logout_user(void);
+static bool startup_query(void);
+static bool digitize_song(void);
+static bool share_song(void);
 
 //need to put special attributes on here
 void gpio_entry() {
@@ -373,6 +315,7 @@ void gpio_entry() {
 #endif // _MSC_VER
 
 int main() {
+    /*
     uint32_t status;
 #error todo: add xilinx header linking
     static XIntc InterruptController;
@@ -404,6 +347,8 @@ int main() {
     for (;;) usleep(500); //we don't do any work in here. (or maybe this should just wait for play song?)
 
     cleanup_platform();
+    */
+    gpio_entry(); //dummy call
     return 0;
 }
 
@@ -433,7 +378,7 @@ check to see if the region rid is provisioned for the player
 returns true/false for success/fail
 */
 static bool valid_region(uint32_t rid) {
-    for (size_t i = 0; i < MAX_REGIONS; ++i) 
+    for (size_t i = 0; i < TOTAL_REGIONS; ++i) 
         if (provisioned_regions[i] == rid)
             return true;
     return false;
@@ -443,7 +388,7 @@ static bool valid_region(uint32_t rid) {
 #pragma endregion 
 #endif
 
-#ifdef _MSC_VER //TODO: strip libsodium, implement decrypt_segment_data (for play_segment)
+#ifdef _MSC_VER //TODO: implement decrypt_segment_data (for play_segment)
 #pragma region crypto_sign
 #endif // _MSC_VER
 
@@ -488,15 +433,15 @@ returns the actual length of the decrypted data (removing padding, for example)
 <start> = start of segment.
 */
 static size_t decrypt_segment_data(void* start, size_t len) {
-#error todo
-    return 0;
+#pragma message("todo: decrypt_segment_data")
+    return len;
 }
 
 #ifdef _MSC_VER
 #pragma endregion
 #endif // _MSC_VER
 
-#ifdef _MSC_VER //TODO: gen_user_secret, valid_user, get_user_salt (libsodium linkage)
+#ifdef _MSC_VER //TODO: verify
 #pragma region user_ops
 #endif // _MSC_VER
 
@@ -513,7 +458,7 @@ static uint32_t get_uid_by_name(const char username[UNAME_SIZE]) {
             return INVALID_UID;
     }
     //check through all the users to see if they match
-    for (i = 0; i < MAX_USERS; ++i) {
+    for (i = 0; i < TOTAL_USERS; ++i) {
         if (!memcmp(provisioned_users[i].name, username, UNAME_SIZE))
             return i;
     }
@@ -535,7 +480,7 @@ bool gen_check_user_secret(uint32_t uid) {
     //important note: public/private key generation is deterministic, which is why this works
     clear_obj(kb);
     if (!memcmp(pkb, provisioned_users[uid].kpublic, EDDSA_PUBLIC_SIZE)) { //everything is good
-        memcpy(dsa_key_buffer, pkb, EDDSA_SECRET_SIZE); //note: this is a hash of the random derived seed that went in.
+        memcpy(dsa_key_buffer, pkb, EDDSA_SECRET_SIZE); //note: this is a slightly-modified hash of the random derived seed that went in.
         clear_obj(pkb);
         return true;
     }
@@ -571,18 +516,9 @@ bool login_user(void) {
 
     copytolocal(pin_buffer, mipod_in->login_data.pin, PIN_SIZE); //no TOCTOU here
 
-    //ensure the pin is valid
-    for (size_t i = 0; i < PIN_SIZE; ++i) {
-        uint8_t b = pin_buffer[i];
-        if ((b < '0' || b > '9') && b != 0) { //the pin should be 0-padded if < 64 bytes
-            clear_buffer(pin_buffer); //not strictly needed, but better safe than sorry.
-            return false; //the pin does not meet standards
-        }
-    }
-
     //if everything is fine, go ahead and log them in.
     if (!gen_check_user_secret(user)) {
-        clear_buffer(dsa_key_buffer); //this already gets cleared but w/e
+        //clear_buffer(dsa_key_buffer); //this doesn't get set unless the keys are OK
         return false;
     }
     else {
@@ -642,7 +578,7 @@ int32_t load_song_header(struct drm_header * arm_drm) {
     }
 
     //check each region in the song to see if it is a valid region that we can play.
-    for (size_t i = 0; i < MAX_REGIONS; ++i) {
+    for (size_t i = 0; i < MAX_SHARED_REGIONS; ++i) {
         uint32_t _rid = current_song_header.regions[i];
         if (valid_region(_rid))
             goto region_success;
@@ -706,7 +642,7 @@ static bool load_song_segment(void* arm_start, size_t segsize, uint32_t segidx) 
     //load the segment
     copytolocal(segment_buffer, arm_start, segsize);
     size_t sdata_size = segsize - sizeof(struct segment_trailer);
-    struct segment_trailer* trailer = (uint8_t*)segment_buffer + sdata_size;
+    struct segment_trailer* trailer = (struct segment_trailer*) ((uint8_t*)segment_buffer + sdata_size);
 
     //if there is an index mismatch or the segment does not belong to the current song, somebody is being naughty
     if (trailer->idx != segidx || memcmp(current_song_header.song_id, trailer->id, SONGID_LEN)) {
@@ -746,7 +682,8 @@ plays the currently loaded song segment in bram.
 static void play_segment_bytes(void * start, size_t size) {
     //decrypt_segment_data()
     //use reference to play up to current_song_header.len_250ms bytes, then
-    return false;
+#pragma message("todo: implement play_segment_bytes")
+    return;
 }
 
 #define SEEK_OK 0 //seeking was successful
@@ -900,7 +837,7 @@ unload:;
 
 bool startup_query(void) {
     copyfromlocal(mipod_in->query_data.rids, provisioned_regions, sizeof(provisioned_regions));
-    for (size_t i = 0; i < MAX_USERS; ++i) 
+    for (size_t i = 0; i < TOTAL_USERS; ++i) 
         copyfromlocal(mipod_in->query_data.users_list[i], provisioned_users[i].name, UNAME_SIZE);
     return true;
 }
