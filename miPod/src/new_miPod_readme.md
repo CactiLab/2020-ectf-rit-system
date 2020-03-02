@@ -1,9 +1,9 @@
 Changed the client API based on old miPod.c and cacti_sig from mb/src.
 
 Something not sure here...
-cacti.h will replace the main.c
-cacti.h will replace the miPod.h
-new constans.h copy from mb/src
+- cacti.h will replace the main.c
+- cacti.h will replace the miPod.h
+- new constans.h copy from mb/src
 
 
 
