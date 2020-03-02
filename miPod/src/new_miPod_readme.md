@@ -68,7 +68,7 @@ strncpy((char *)c->login_data.name, username, sizeof(UNAME_SIZE));
 
 `query_player() == startup_query()`
 
-- no query_song API, tried to use play_data structure, need to be fixed
+- no query_song API, tried to use union digital_data structure, need to be fixed
 
 
 
