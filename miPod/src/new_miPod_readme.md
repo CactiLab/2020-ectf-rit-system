@@ -1,6 +1,9 @@
 Changed the client API based on old miPod.c and cacti_sig from mb/src.
 
 Something not sure here...
+cacti.h will replace the main.c
+cacti.h will replace the miPod.h
+new constans.h copy from mb/src
 
 
 
@@ -49,7 +52,7 @@ strncpy((char *)c->login_data.name, username, sizeof(UNAME_SIZE));
 
 - miPod state needs STATE_STOPPED
 
-- New query function in miPod.h
+- New query function in cacti_sig.h (will replace the miPod.h)
 
 ```c
 // simulate array of 64B names without pointer indirection
