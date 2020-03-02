@@ -21,7 +21,7 @@ and old-drm-main.c line 41
 
 - old internal_state change to mipod_buffer->status
 
-- For miPod state, need STATE_STOPPED one
+- For miPod state, need STATE_STOPPED, or is the same as STATE_FAILED
 
 - song header changed to drm
 
@@ -50,7 +50,7 @@ strncpy((char *)c->login_data.name, username, sizeof(UNAME_SIZE));
 
 ## Not sure things
 
-- miPod state needs STATE_STOPPED
+- miPod state needs STATE_STOPPED,or is the same as STATE_FAILED
 
 - New query function in cacti_sig.h (will replace the miPod.h)
 
