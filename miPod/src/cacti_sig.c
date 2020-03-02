@@ -125,7 +125,7 @@ void logout() {
 void query_player() {
     // drive DRM
     send_command(MIPOD_QUERY);
-    while (c->status == STATE_STOPPED) continue; // wait for DRM to start STATE_WORKING
+    while (c->status == STATE_FAILED) continue; // wait for DRM to start STATE_WORKING
     while (c->status == STATE_WORKING) continue; // wait for DRM to dump file
 
     // print query results
@@ -149,32 +149,32 @@ void query_player() {
 // queries the DRM about a song
 void query_song(char *song_name) {
     // load the song into the shared buffer
-    if (!load_file(song_name, (void*)&c->play_data.drm)) {
+    if (!load_file(song_name, (void*)&c->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
 
     // drive DRM
     send_command(MIPOD_QUERY);
-    while (c->status == STATE_STOPPED) continue; // wait for DRM to start STATE_WORKING
+    while (c->status == STATE_FAILED) continue; // wait for DRM to start STATE_WORKING
     while (c->status == STATE_WORKING) continue; // wait for DRM to finish
 
     // print query results
 
-    mp_printf("Regions: %s", q_song_region_lookup(c->play_data.drm, 0));
-    for (int i = 1; i < sizeof(c->play_data.drm.regions); i++) {
-        printf(", %s", q_song_region_lookup(c->play_data.drm, i));
+    mp_printf("Regions: %s", q_song_region_lookup(c->digital_data.drm, 0));
+    for (int i = 1; i < sizeof(c->digital_data.drm.regions); i++) {
+        printf(", %s", q_song_region_lookup(c->digital_data.drm, i));
     }
     printf("\r\n");
 
-    mp_printf("Owner: %s", c->play_data.drm.owner);
+    mp_printf("Owner: %s", c->digital_data.drm.owner);
     printf("\r\n");
 
     mp_printf("Authorized users: ");
     if (c->query_data.users_list) {
-        printf("%s", q_song_user_lookup(c->play_data.drm, 0));
-        for (int i = 1; i < sizeof(c->play_data.drm.shared_users); i++) {
-            printf(", %s", q_song_user_lookup(c->play_data.drm, i));
+        printf("%s", q_song_user_lookup(c->digital_data.drm, 0));
+        for (int i = 1; i < sizeof(c->digital_data.drm.shared_users); i++) {
+            printf(", %s", q_song_user_lookup(c->digital_data.drm, i));
         }
     }
     printf("\r\n");
@@ -193,20 +193,20 @@ void share_song(char *song_name, char *username) {
     }
 
     // load the song into the shared buffer
-    if (!load_file(song_name, (void*)&c->play_data.drm)) {
+    if (!load_file(song_name, (void*)&c->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
 
-    strncpy((char *)c->login_data.name, username, sizeof(UNAME_SIZE));
+    strncpy((char *)c->share_data.target_name, username, sizeof(UNAME_SIZE));
 
     // drive DRM
     send_command(MIPOD_SHARE);
-    while (c->status == STATE_STOPPED) continue; // wait for DRM to start STATE_WORKING
+    while (c->status == STATE_FAILED) continue; // wait for DRM to start STATE_WORKING
     while (c->status == STATE_WORKING) continue; // wait for DRM to share song
 
     // request was rejected if WAV length is 0
-    length = c->play_data.drm.first_segment_size;
+    length = c->digital_data.wav_size;
     if (length == 0) {
         mp_printf("Share rejected\r\n");
         return;
@@ -222,7 +222,7 @@ void share_song(char *song_name, char *username) {
     // write song dump to file
     mp_printf("Writing song to file '%s' (%dB)\r\n", song_name, length);
     while (written < length) {
-        wrote = write(fd, (char *)&c->play_data.drm + written, length - written);
+        wrote = write(fd, (char *)&c->share_data.drm + written, length - written);
         if (wrote == -1) {
             mp_printf("Error in writing file! Error = %d\r\n", errno);
             return;
@@ -239,14 +239,14 @@ int play_song(char *song_name) {
     char usr_cmd[USR_CMD_SZ + 1], *cmd = NULL, *arg1 = NULL, *arg2 = NULL;
 
     // load song into shared buffer
-    if (!load_file(song_name, (void*)&c->play_data.drm)) {
+    if (!load_file(song_name, (void*)&c->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return 0;
     }
 
     // drive the DRM
     send_command(MIPOD_PLAY);
-    while (c->status == STATE_STOPPED) continue; // wait for DRM to start playing
+    while (c->status == STATE_FAILED) continue; // wait for DRM to start playing
 
     // play loop
     while(1) {
@@ -256,7 +256,7 @@ int play_song(char *song_name) {
             fgets(usr_cmd, USR_CMD_SZ, stdin);
 
             // exit playback loop if DRM has finished song
-            if (c->status == STATE_STOPPED) {
+            if (c->status == STATE_FAILED) {
                 mp_printf("Song finished\r\n");
                 return 0;
             }
@@ -308,18 +308,18 @@ void digital_out(char *song_name) {
     char fname[64];
 
     // load file into shared buffer
-    if (!load_file(song_name, (void*)&c->play_data.drm)) {
+    if (!load_file(song_name, (void*)&c->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
 
     // drive DRM
     send_command(MIPOD_DIGITAL);
-    while (c->status == STATE_STOPPED) continue; // wait for DRM to start STATE_WORKING
+    while (c->status == STATE_FAILED) continue; // wait for DRM to start STATE_WORKING
     while (c->status == STATE_WORKING) continue; // wait for DRM to dump file
 
     // open digital output file
-    int written = 0, wrote, length = c->play_data.drm.len_250ms + 8;
+    int written = 0, wrote, length = c->digital_data.wav_size + 8;   // this 8???
     sprintf(fname, "%s.dout", song_name);
     int fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC);
     if (fd == -1){
@@ -330,7 +330,7 @@ void digital_out(char *song_name) {
     // write song dump to file
     mp_printf("Writing song to file '%s' (%dB)\r\n", fname, length);
     while (written < length) {
-        wrote = write(fd, (char *)&c->play_data.drm + written, length - written);
+        wrote = write(fd, (char *)&c->digital_data + written, length - written);
         if (wrote == -1) {
             mp_printf("Error in writing file! Error = %d \r\n", errno);
             return;
