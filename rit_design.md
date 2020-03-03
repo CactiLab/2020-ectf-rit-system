@@ -14,6 +14,7 @@
  * Attack steps:
     * Step1: Using Xilinx System Dubegger to connect the board
     * Step2: Finding out the address we want to access
+    `nm mb/drm_audio_fw/Debug/drm_audio_fw.elf`
     * Step3: Access the address (read and write)
 
 ## Design
