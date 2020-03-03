@@ -149,7 +149,7 @@ void query_player() {
 // queries the DRM about a song
 void query_song(char *song_name) {
     // load the song into the shared buffer
-    if (!load_file(song_name, (void*)&c->digital_data)) {
+    if (!load_file(song_name, (void*)&c->digital_data.drm)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
@@ -193,7 +193,7 @@ void share_song(char *song_name, char *username) {
     }
 
     // load the song into the shared buffer
-    if (!load_file(song_name, (void*)&c->digital_data)) {
+    if (!load_file(song_name, (void*)&c->digital_data.drm)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
@@ -239,7 +239,7 @@ int play_song(char *song_name) {
     char usr_cmd[USR_CMD_SZ + 1], *cmd = NULL, *arg1 = NULL, *arg2 = NULL;
 
     // load song into shared buffer
-    if (!load_file(song_name, (void*)&c->digital_data)) {
+    if (!load_file(song_name, (void*)&c->digital_data.drm)) {
         mp_printf("Failed to load song!\r\n");
         return 0;
     }
@@ -308,7 +308,7 @@ void digital_out(char *song_name) {
     char fname[64];
 
     // load file into shared buffer
-    if (!load_file(song_name, (void*)&c->digital_data)) {
+    if (!load_file(song_name, (void*)&c->digital_data.drm)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
