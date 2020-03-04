@@ -6,7 +6,8 @@ Use: Once per device
 import os
 import json
 from argparse import ArgumentParser
-
+from argon2 import PasswordHasher
+from pbkdf2 import PBKDF2
 
 
 def main(region_names, user_names, user_secrets, region_secrets, device_dir):
@@ -43,6 +44,17 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
         return
 
     # write secrets
+    ph = PasswordHasher()
+    hasMap = {}
+    slatMap = {}
+    mipodKey = os.urandom(32)
+    mipodSlat= os.urandom(32)
+    for u in user_secrets:
+        salt = os.urandom(16)  #16 bit slat
+       # s = salt.decode()
+        slatMap[u] = salt
+        hashValue = PBKDF2(ph.hash(u+user_secrets[u]['pin']), salt).read(32) # 256-bit hash
+        hasMap[u] = hashValue
     device_secrets.write(f'''
 #pragma once
 #ifndef SECRETS_H
@@ -56,15 +68,14 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
 struct user {{
     const char name[UNAME_SIZE]; 
     const uint8_t salt[SALT_SIZE]; 
-    const uint8_t kpublic[PKEY_SIZE]; 
+    const uint8_t hash[PKEY_SIZE]; 
 }}; 
 
-
-static const uint8_t mipod_pubkey[EDDSA_PUBLIC_SIZE]; //public signing key for the firmware
-static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{'+'}'+','+ '{'+'}'+'}' for u in user_secrets])} }};
+static const uint8_t mipod_key[32] = {{{", ".join([  str(keyByte)  for keyByte in mipodKey])} }}; //public signing key for the firmware
+static const uint8_t mipod_salt[32] ={{{", ".join([  str(saltByte) for saltByte in mipodSlat])} }}; //public signing key for the firmware
+static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{'+ ", ".join([ str(uSaltByte)  for uSaltByte in slatMap[u]])+'}'+','+ '{'+", ".join([ str(uHashByte)  for uHashByte in hasMap[u]])+'}'+'}' for u in user_secrets])} }};
 
 static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
-const char *REGION_NAMES[] = {{ {", ".join(['"' + r + '"' for r in region_secrets])} }};
 
 
 
