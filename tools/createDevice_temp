@@ -43,26 +43,26 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
               "Please ensure all regions entered are in the list: {user_secrets}".format(e=e, user_secrets=user_secrets.keys()))
         return
 
-    # write secrets
+    # generate random secrects
     ph = PasswordHasher()
     hasMap = {}
     slatMap = {}
-    mipodKey = os.urandom(32)
-    mipodSlat= os.urandom(32)
-    for u in user_secrets:
+    mipodKey = os.urandom(64)
+    mipodSlat= os.urandom(16)
+    for u in user_names:
         salt = os.urandom(16)  #16 bit slat
-       # s = salt.decode()
         slatMap[u] = salt
-        hashValue = PBKDF2(ph.hash(u+user_secrets[u]['pin']), salt).read(32) # 256-bit hash
+        hashValue = PBKDF2(ph.hash(u+user_secrets[u]['pin']), salt).read(64) # 256-bit hash
         hasMap[u] = hashValue
+    # write secrets
     device_secrets.write(f'''
 #pragma once
 #ifndef SECRETS_H
 #define SECRETS_H
 #include "constants.h"
 
-#define TOTAL_USERS 64
-#define TOTAL_REGIONS 32
+#define TOTAL_USERS {len(user_names)}
+#define TOTAL_REGIONS {len(region_names)}
 
 
 struct user {{
@@ -71,11 +71,11 @@ struct user {{
     const uint8_t hash[PKEY_SIZE]; 
 }}; 
 
-static const uint8_t mipod_key[32] = {{{", ".join([  str(keyByte)  for keyByte in mipodKey])} }}; //public signing key for the firmware
-static const uint8_t mipod_salt[32] ={{{", ".join([  str(saltByte) for saltByte in mipodSlat])} }}; //public signing key for the firmware
-static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{'+ ", ".join([ str(uSaltByte)  for uSaltByte in slatMap[u]])+'}'+','+ '{'+", ".join([ str(uHashByte)  for uHashByte in hasMap[u]])+'}'+'}' for u in user_secrets])} }};
+static const uint8_t mipod_key[PKEY_SIZE] = {{{", ".join([  str(keyByte)  for keyByte in mipodKey])} }}; //public signing key for the firmware size 64
+static const uint8_t mipod_salt[SALT_SIZE] ={{{", ".join([  str(saltByte) for saltByte in mipodSlat])} }}; //public slat  for the firmware size 16
+static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{'+ ", ".join([ str(uSaltByte)  for uSaltByte in slatMap[u]])+'}'+','+ '{'+", ".join([ str(uHashByte)  for uHashByte in hasMap[u]])+'}'+'}' for u in user_names])} }};
 
-static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
+static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join(rids)} }};
 
 
 
