@@ -75,10 +75,10 @@ class CreateDrmHeader(object):
         return shared_users
 
     def init_sig(self):
-        owner_sig = ''
+        sig = ''
         for i in range(0, 4):
-            owner_sig = owner_sig + "".join(random.sample(string.ascii_letters + string.digits, 16))
-        return str.encode(owner_sig)
+            sig = sig + "".join(random.sample(string.ascii_letters + string.digits, k=16))
+        return str.encode(sig)
 
 def write_header(outfile, drm_header):
     file = open(outfile, "ab+")
@@ -104,7 +104,7 @@ class EncryptSong(object):
 
     def gen_key(self):
         key = os.urandom(16)
-        key_file = open("aes.key", "ab")
+        key_file = open("aes.key", "wb")
         key_file.write(key)
         key_file.close()
         return key
