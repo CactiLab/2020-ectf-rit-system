@@ -3,12 +3,13 @@
 Description: Protects song by adding metadata or any other security measures
 Use: Once per song
 Usage:
-./protectRITSong.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile demo.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
+./protectRITSong.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile protecRITdemo.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
 output: encrypted song, aes.key will be sent to firmware
 """
 import json
 import struct
 import os
+import wave
 from argparse import ArgumentParser
 import numpy as np
 
@@ -35,9 +36,10 @@ class CreateDrmHeader(object):
         self.song_id = str.encode("".join(random.choices(string.digits, k=16)))
         self.owner = struct.pack('=16s', str.encode(user))
         self.regions_id = self.create_max_regions(region_info, regions)
-        self.len_250ms = struct.pack('=I', 0)
-        self.nr_segments = struct.pack('=I', 4)
         self.wavdata = self.read_wav_header(path_to_song)
+        # self.len_250ms = struct.pack('=I', 0)   
+        self.len_250ms = self.find_len_250ms(path_to_song)
+        self.nr_segments = struct.pack('=I', 4)
         self.mp_sig = self.init_sig()
         self.shared_users = self.init_shared_users()
         self.owner_sig = self.init_sig()
@@ -58,7 +60,9 @@ class CreateDrmHeader(object):
         except IOError as err:
             print("Could not open song file %s" % file_name)
             return
-        bufHeader = fileIn.read(38)
+        # bufHeader = fileIn.read(38)
+        bufHeader = fileIn.read(44)
+
         # Verify that the correct identifiers are present
         # print(bufHeader[0:4])
         # print(bufHeader[12:16])
@@ -67,6 +71,29 @@ class CreateDrmHeader(object):
         #     print(("Input file is not a standard WAV file"))
         #     return
         return bufHeader
+
+    # time = FileLength / (Sample Rate * Channels * Bits per sample /8)
+    def find_len_250ms(self, path):
+        wav= self.wavdata
+
+        # ChunkID=wav[0:4] # First four bytes are ChunkID which must be "RIFF" in ASCII
+        # ChunkSize=struct.unpack('I',wav[4:8]) # 'I' Format is to to treat the 4 bytes as unsigned 32-bit inter
+        # TotalSize=ChunkSize[0]+8 # The subscript is used because struct unpack returns everything as tuple
+        # DataSize=TotalSize-44 # This is the number of bytes of data
+        # Format=wav[8:12] # "WAVE" in ASCII
+        # SubChunk1ID=wav[12:16] # "fmt " in ASCII
+        # SubChunk1Size=(struct.unpack("I",wav[16:20]))[0] # 'I' format to treat as unsigned 32-bit integer
+        # AudioFormat=(struct.unpack("H",wav[20:22]))[0] # 'H' format to treat as unsigned 16-bit integer
+        # NumChannels=(struct.unpack("H",wav[22:24]))[0] # 'H' unsigned 16-bit integer
+        # SampleRate=(struct.unpack("I",wav[24:28]))[0]
+        BytePerSec=(struct.unpack("I",wav[28:32]))[0] # 'I' unsigned 32 bit integer
+        # BlockAlign=(struct.unpack("H",wav[32:34]))[0] # 'H' unsigned 16-bit integer
+        # BitsPerSample=(struct.unpack("H",wav[34:36]))[0] # 'H' unsigned 16-bit integer
+        # SubChunk2ID=wav[36:40] # "data" in ASCII
+        # SubChunk2Size=(struct.unpack("I",wav[40:44]))[0]
+
+        BytePer_250ms = (BytePerSec * 250) /1000
+        return struct.pack("I", int(BytePer_250ms))
 
     def init_shared_users(self):
         shared_users = bytearray()
@@ -148,6 +175,64 @@ class EncryptSong(object):
         fileOut.write(self.encrypt_str)
         fileOut.close
 
+def print_song_header(path):
+    fin = open(os.path.abspath(path),"rb") # Read wav file, "r flag" - read, "b flag" - binary 
+    ChunkID=fin.read(4) # First four bytes are ChunkID which must be "RIFF" in ASCII
+    print("ChunkID=",ChunkID)
+    ChunkSizeString=fin.read(4) # Total Size of File in Bytes - 8 Bytes
+    ChunkSize=struct.unpack('I',ChunkSizeString) # 'I' Format is to to treat the 4 bytes as unsigned 32-bit inter
+    TotalSize=ChunkSize[0]+8 # The subscript is used because struct unpack returns everything as tuple
+    print("TotalSize=",TotalSize)
+    DataSize=TotalSize-44 # This is the number of bytes of data
+    print("DataSize=",DataSize)
+    Format=fin.read(4) # "WAVE" in ASCII
+    print("Format=",Format)
+    SubChunk1ID=fin.read(4) # "fmt " in ASCII
+    print("SubChunk1ID=",SubChunk1ID)
+    SubChunk1SizeString=fin.read(4) # Should be 16 (PCM, Pulse Code Modulation)
+    SubChunk1Size=struct.unpack("I",SubChunk1SizeString) # 'I' format to treat as unsigned 32-bit integer
+    print("SubChunk1Size=",SubChunk1Size[0])
+    AudioFormatString=fin.read(2) # Should be 1 (PCM)
+    AudioFormat=struct.unpack("H",AudioFormatString) # 'H' format to treat as unsigned 16-bit integer
+    print("AudioFormat=",AudioFormat[0])
+    NumChannelsString=fin.read(2) # Should be 1 for mono, 2 for stereo
+    NumChannels=struct.unpack("H",NumChannelsString) # 'H' unsigned 16-bit integer
+    print("NumChannels=",NumChannels[0])
+    SampleRateString=fin.read(4) # Should be 44100 (CD sampling rate)
+    SampleRate=struct.unpack("I",SampleRateString)
+    print("SampleRate=",SampleRate[0])
+    BytePerSecString=fin.read(4) # 44100*NumChan*2 (88200 - Mono, 176400 - Stereo)
+    BytePerSec=struct.unpack("I",BytePerSecString) # 'I' unsigned 32 bit integer
+    print("BytePerSec=",BytePerSec[0])
+    BlockAlignString=fin.read(2) # NumChan*2 (2 - Mono, 4 - Stereo)
+    BlockAlign=struct.unpack("H",BlockAlignString) # 'H' unsigned 16-bit integer
+    print("BlockAlign=",BlockAlign[0])
+    BitsPerSampleString=fin.read(2) # 16 (CD has 16-bits per sample for each channel)
+    BitsPerSample=struct.unpack("H",BitsPerSampleString) # 'H' unsigned 16-bit integer
+    print("BitsPerSample=",BitsPerSample[0])
+    SubChunk2ID=fin.read(4) # "data" in ASCII
+    print("SubChunk2ID=",SubChunk2ID)
+    SubChunk2SizeString=fin.read(4) # Number of Data Bytes, Same as DataSize
+    SubChunk2Size=struct.unpack("I",SubChunk2SizeString)
+    print("SubChunk2Size=",SubChunk2Size[0])
+    S1String=fin.read(2) # Read first data, number between -32768 and 32767
+    S1=struct.unpack("h",S1String)
+    print("S1=",S1[0])
+    S2String=fin.read(2) # Read second data, number between -32768 and 32767
+    S2=struct.unpack("h",S2String)
+    print("S2=",S2[0])
+    S3String=fin.read(2) # Read second data, number between -32768 and 32767
+    S3=struct.unpack("h",S3String)
+    print("S3=",S3[0])
+    S4String=fin.read(2) # Read second data, number between -32768 and 32767
+    S4=struct.unpack("h",S4String)
+    print("S4=",S4[0])
+    S5String=fin.read(2) # Read second data, number between -32768 and 32767
+    S5=struct.unpack("h",S5String)
+    print("S5=",S5[0])
+    fin.close()
+
+
 def main():
     parser = ArgumentParser(description='main interface to protect songs')
     parser.add_argument('--region-list', nargs='+', help='List of regions song can be played in', required=True)
@@ -161,9 +246,12 @@ def main():
 
     regions = json.load(open(os.path.abspath(args.region_secrets_path)))
 
+    # print_song_header(args.infile)
+
     drm_header = CreateDrmHeader(args.infile, args.region_list, args.owner, args.user_secrets_path, regions) 
     nr_segments = drm_header.nr_segments
     protect_song = EncryptSong(nr_segments, args.infile)
+    # The size of the first segment will be caculated when encrypt the song
     CreateDrmHeader.first_segment_size = struct.pack('=I', protect_song.first_segment_size)
     write_header(args.outfile, drm_header)
     protect_song.save_song(args.outfile)
