@@ -38,7 +38,7 @@ class CreateDrmHeader(object):
         self.regions_id = self.create_max_regions(region_info, regions)
         self.wavdata = self.read_wav_header(path_to_song)
         # self.len_250ms = struct.pack('=I', 0)   
-        self.len_250ms = self.find_len_250ms(path_to_song)
+        self.len_250ms = self.find_len_250ms()
         self.nr_segments = struct.pack('=I', 4)
         self.mp_sig = self.init_sig()
         self.shared_users = self.init_shared_users()
@@ -73,7 +73,7 @@ class CreateDrmHeader(object):
         return bufHeader
 
     # time = FileLength / (Sample Rate * Channels * Bits per sample /8)
-    def find_len_250ms(self, path):
+    def find_len_250ms(self):
         wav= self.wavdata
 
         # ChunkID=wav[0:4] # First four bytes are ChunkID which must be "RIFF" in ASCII
