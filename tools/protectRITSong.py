@@ -3,7 +3,7 @@
 Description: Protects song by adding metadata or any other security measures
 Use: Once per song
 Usage:
-./protectRITSong.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile protecRITdemo.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
+./protectRITSong.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile protectRITdemo.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
 output: encrypted song, aes.key will be sent to firmware
 """
 import json
