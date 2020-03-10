@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Description: Protects song by adding metadata or any other security measures
+Description: unProtects song
 Use: Once per song
 Usage:
 ./unprotectedSong.py --infile protectRITdemo.drm --outfile unprotectRIT.wav --keyfile aes.key
-output: encrypted song, aes.key will be sent to firmware
+output: decrypted song
 """
 import json
 import struct
