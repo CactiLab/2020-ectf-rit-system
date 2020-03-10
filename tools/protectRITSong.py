@@ -98,7 +98,7 @@ class CreateDrmHeader(object):
     def init_shared_users(self):
         shared_users = bytearray()
         for i in range(0, 64):
-            shared_users = shared_users + struct.pack("=4s", str.encode(''))
+            shared_users = shared_users + struct.pack("=16s", str.encode(''))
         return shared_users
 
     def init_sig(self):
