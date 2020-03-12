@@ -1,5 +1,5 @@
 /*
- * eCTF Collegiate 2020 miPod Example Code
+ * eCTF Collegiate 2020 miPod Example Code -- RIT design
  * Linux-side DRM driver
  */
 
@@ -72,7 +72,9 @@ void print_playback_help() {
 
 // loads a file into the song buffer with the associate
 // returns the size of the file or 0 on error
-size_t load_file(char *fname, char *song_buf) {
+size_t load_file(char *fname, struct mipod_digital_data *digital_song) {
+    struct mipod_play_data * song_buf;
+    // char *song_buf;
     int fd;
     struct stat sb;
 
@@ -88,6 +90,10 @@ size_t load_file(char *fname, char *song_buf) {
     }
 
     read(fd, song_buf, sb.st_size);
+    digital_song->wav_size = song_buf->drm.wavdata.subchunk2_size;
+    digital_song->drm = song_buf->drm;
+    memcpy(digital_song->filedata, song_buf->filedata, sb.st_size - sizeof(song_buf->drm));
+    
     close(fd);
 
     mp_printf("Loaded file into shared buffer (%dB)\r\n", sb.st_size);
@@ -149,13 +155,13 @@ void query_player() {
 // queries the DRM about a song
 void query_song(char *song_name) {
     // load the song into the shared buffer
-    if (!load_file(song_name, (void*)&c->digital_data.drm)) {
+    if (!load_file(song_name, &c->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
 
     // drive DRM
-    send_command(MIPOD_QUERY);
+    // send_command(MIPOD_QUERY);
     while (c->status == STATE_FAILED) continue; // wait for DRM to start STATE_WORKING
     while (c->status == STATE_WORKING) continue; // wait for DRM to finish
 
@@ -173,8 +179,11 @@ void query_song(char *song_name) {
     mp_printf("Authorized users: ");
     if (c->query_data.users_list) {
         printf("%s", q_song_user_lookup(c->digital_data.drm, 0));
-        for (int i = 1; i < sizeof(c->digital_data.drm.shared_users); i++) {
-            printf(", %s", q_song_user_lookup(c->digital_data.drm, i));
+        for (int i = 1; i < sizeof(c->digital_data.drm.shared_users); i++) {    
+            if (q_song_user_lookup(c->digital_data.drm, i) != 0)
+            {
+                printf(", %s", q_song_user_lookup(c->digital_data.drm, i));
+            }           
         }
     }
     printf("\r\n");
@@ -193,12 +202,13 @@ void share_song(char *song_name, char *username) {
     }
 
     // load the song into the shared buffer
-    if (!load_file(song_name, (void*)&c->digital_data.drm)) {
+    if (!load_file(song_name, (void*)&c->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
 
     strncpy((char *)c->share_data.target_name, username, sizeof(UNAME_SIZE));
+    c->share_data.drm = c->play_data.drm;
 
     // drive DRM
     send_command(MIPOD_SHARE);
@@ -211,6 +221,8 @@ void share_song(char *song_name, char *username) {
         mp_printf("Share rejected\r\n");
         return;
     }
+
+    length = length + 1368;
 
     // open output file
     fd = open(song_name, O_WRONLY);
@@ -239,7 +251,7 @@ int play_song(char *song_name) {
     char usr_cmd[USR_CMD_SZ + 1], *cmd = NULL, *arg1 = NULL, *arg2 = NULL;
 
     // load song into shared buffer
-    if (!load_file(song_name, (void*)&c->digital_data.drm)) {
+    if (!load_file(song_name, (void*)&c->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return 0;
     }
@@ -308,7 +320,7 @@ void digital_out(char *song_name) {
     char fname[64];
 
     // load file into shared buffer
-    if (!load_file(song_name, (void*)&c->digital_data.drm)) {
+    if (!load_file(song_name, (void*)&c->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
@@ -387,7 +399,7 @@ int main(int argc, char** argv)
             if (play_song(arg1) < 0) {
                 break;
             }
-        } else if (!strcmp(cmd, "MIPOD_DIGITAL")) {
+        } else if (!strcmp(cmd, "digital")) {
         	digital_out(arg1);
         } else if (!strcmp(cmd, "share")) {
             share_song(arg1, arg2);
