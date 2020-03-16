@@ -6,11 +6,11 @@ Use: Once per device
 import os
 import json
 from argparse import ArgumentParser
-
-
+from argon2 import PasswordHasher
+import hashlib
 
 def main(region_names, user_names, user_secrets, region_secrets, device_dir):
-    file_name = "device_secrets"
+    file_name = "device_secrets.h"
 
     # create device directory
     try:
@@ -42,26 +42,38 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
               "Please ensure all regions entered are in the list: {user_secrets}".format(e=e, user_secrets=user_secrets.keys()))
         return
 
+    # generate randon secrects
+    ph = PasswordHasher()
+    hasMap = {}
+    slatMap = {}
+    mipodKey = os.urandom(64)
+    mipodSlat= os.urandom(16)
+    for u in user_names:
+        perSalt = os.urandom(16)  #16 bit slat
+        slatMap[u] = perSalt
+        argon2Hash = ph.hash(u+user_secrets[u]['pin'])
+        #print (len(argon2Hash))
+        hashValue = hashlib.pbkdf2_hmac('sha512', str.encode(argon2Hash), perSalt, 4096)
+        #print(len(hashValue))
+        #hashValue = PBKDF2(ph.hash(u+user_secrets[u]['pin']), perSalt).read(64) # 256-bit hash
+        hasMap[u] = hashValue
     # write secrets
     device_secrets.write(f'''
+#pragma oncexs
 #ifndef SECRETS_H
 #define SECRETS_H
-
-#define NUM_REGIONS {len(region_secrets)}
-const char *REGION_NAMES[] = {{ {", ".join(['"' + r + '"' for r in region_secrets])} }};
-const u8 REGION_IDS[] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
-
-#define NUM_PROVISIONED_REGIONS {len(region_names)}
-const u8 PROVISIONED_RIDS[] = {{ {", ".join(rids)} }};
-
-#define NUM_USERS {len(user_secrets)}
-const char *USERNAMES[] = {{ {", ".join(['"' + u + '"' for u in user_secrets])} }};
-const u8 USER_IDS[] = {{ {", ".join([str(user_secrets[u]['id']) for u in user_names])} }};
-
-#define NUM_PROVISIONED_USERS {len(user_names)}
-const u8 PROVISIONED_UIDS[] = {{ {", ".join(uids)} }};
-const char *PROVISIONED_PINS[] = {{ {", ".join(['"' + user_secrets[u]['pin'] + '"' for u in user_names])} }};
-
+#include "constants.h"
+#define TOTAL_USERS {len(user_names)}
+#define TOTAL_REGIONS {len(region_names)}
+struct user {{
+    const char name[UNAME_SIZE]; 
+    const uint8_t salt[SALT_SIZE]; 
+    const uint8_t hash[PKEY_SIZE]; 
+}}; 
+static const uint8_t mipod_key[PKEY_SIZE] = {{{", ".join([  str(keyByte)  for keyByte in mipodKey])} }}; //public signing key for the firmware size 64
+static const uint8_t mipod_salt[SALT_SIZE] ={{{", ".join([  str(saltByte) for saltByte in mipodSlat])} }}; //public slat  for the firmware size 16
+static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{'+ ", ".join([ str(uSaltByte)  for uSaltByte in slatMap[u]])+'}'+','+ '{'+", ".join([ str(uHashByte)  for uHashByte in hasMap[u]])+'}'+'}' for u in user_names])} }};
+static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join(rids)} }};
 #endif // SECRETS_H
 ''')
 
