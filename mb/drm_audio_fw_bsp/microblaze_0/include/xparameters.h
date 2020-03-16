@@ -747,7 +747,6 @@
 #define XPAR_XGPIOPS_0_BASEADDR 0xE000A000
 #define XPAR_XGPIOPS_0_HIGHADDR 0xE000AFFF
 
-
 /******************************************************************/
 
 /* Definitions for driver IICPS */
@@ -905,6 +904,21 @@
 #define XPAR_XUSBPS_0_BASEADDR 0xE0002000
 #define XPAR_XUSBPS_0_HIGHADDR 0xE0002FFF
 
+/******************************************************************/
+
+/* Definitions for driver DECRYPT */
+#define XPAR_XDECRYPT_NUM_INSTANCES 1
+/* Definitions for peripheral DECRYPT_0 */
+#define XPAR_DECRYPT_0_DEVICE_ID 0
+#define XPAR_DECRYPT_0_S_AXI_AES_BUS_S_BASEADDR 0x43C10000
+#define XPAR_DECRYPT_0_S_AXI_AES_BUS_S_HIGHADDR 0x43C1FFFF
+
+/******************************************************************/
+
+/* Canonical definitions for peripheral DECRYPT_0 */
+#define XPAR_XDECRYPT_0_DEVICE_ID XPAR_DECRYPT_0_DEVICE_ID
+#define XPAR_XDECRYPT_0_S_AXI_AES_BUS_S_BASEADDR 0x43C10000
+#define XPAR_XDECRYPT_0_S_AXI_AES_BUS_S_HIGHADDR 0x43C1FFFF
 
 /******************************************************************/
 

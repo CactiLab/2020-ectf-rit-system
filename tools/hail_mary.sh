@@ -28,5 +28,5 @@ mkdir global_provisioning/audio -p
 # # combine bistream
 # ./buildDevice -p ../ -n rit_pl_proj -bf cb -secrets_dir device1/
 
-./packageDevice ../boot-image/template.bif device1/miPod.bin ../mb/Cora-Z7-07S/download.bit
-./deployDevice /dev/sdb ../BOOT.BIN global_provisioning/audio/ ../mb/miPod/Debug/miPod ../boot-image/image.ub --mipod-bin-path device1/miPod.bin
+./packageDevice ../boot-image/template.bif device1/miPod.bin device1/download.bit
+./deployDevice /dev/sda ../BOOT.BIN global_provisioning/audio/ device1/miPod ../boot-image/image.ub --mipod-bin-path device1/miPod.bin

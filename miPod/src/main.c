@@ -1,5 +1,5 @@
 /*
- * eCTF Collegiate 2020 miPod Example Code
+ * eCTF Collegiate 2020 miPod Example Code -- RIT design
  * Linux-side DRM driver
  */
 
@@ -15,17 +15,18 @@
 #include <errno.h>
 #include <linux/gpio.h>
 #include <string.h>
+#include <stddef.h>
 
 
-volatile cmd_channel *c;
+volatile mipod_buffer *mipod_in;
 
 
 //////////////////////// UTILITY FUNCTIONS ////////////////////////
 
 
 // sends a command to the microblaze using the shared command channel and interrupt
-void send_command(int cmd) {
-    memcpy((void*)&c->cmd, &cmd, 1);
+void send_command(int operation) {
+    memcpy((void*)&mipod_in->operation, &operation, 1);
 
     //trigger gpio interrupt
     system("devmem 0x41200000 32 0");
@@ -35,8 +36,8 @@ void send_command(int cmd) {
 
 // parses the input of a command with up to two arguments
 // any arguments not present will be set to NULL
-void parse_input(char *input, char **cmd, char **arg1, char **arg2) {
-    *cmd = strtok(input, " \r\n");
+void parse_input(char *input, char **ops, char **arg1, char **arg2) {
+    *ops = strtok(input, " \r\n");
     *arg1 = strtok(NULL, " \r\n");
     *arg2 = strtok(NULL, " \r\n");
 }
@@ -71,7 +72,9 @@ void print_playback_help() {
 
 // loads a file into the song buffer with the associate
 // returns the size of the file or 0 on error
-size_t load_file(char *fname, char *song_buf) {
+size_t load_file(char *fname, mipod_digital_data *digital_data) {
+    mipod_play_data * song_buf;
+    // char *song_buf;
     int fd;
     struct stat sb;
 
@@ -86,7 +89,13 @@ size_t load_file(char *fname, char *song_buf) {
         return 0;
     }
 
-    read(fd, song_buf, sb.st_size);
+    // read(fd, song_buf, sb.st_size);
+    // digital_song->wav_size = song_buf->drm.wavdata.subchunk2_size;
+    // digital_song->drm = song_buf->drm;
+    // memcpy(digital_song->filedata, song_buf->filedata, sb.st_size - sizeof(song_buf->drm));
+    read(fd, &(digital_data->play_data), sb.st_size);
+    digital_data->wav_size = digital_data->play_data.drm.wavdata.blk_align - 44 + 8;
+    
     close(fd);
 
     mp_printf("Loaded file into shared buffer (%dB)\r\n", sb.st_size);
@@ -106,16 +115,22 @@ void login(char *username, char *pin) {
     }
 
     // drive DRM
-    strcpy((void*)c->username, username);
-    strcpy((void*)c->pin, pin);
-    send_command(LOGIN);
+    memset((void*)mipod_in->login_data.name, 0, UNAME_SIZE);
+    memset((void*)mipod_in->login_data.pin, 0, PIN_SIZE);
+    strncpy((void*)mipod_in->login_data.name, username, UNAME_SIZE);
+    strncpy((void*)mipod_in->login_data.pin, pin, PIN_SIZE);
+    send_command(MIPOD_LOGIN);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
 }
 
 
 // logs out for a user
 void logout() {
     // drive DRM
-    send_command(LOGOUT);
+    send_command(MIPOD_LOGOUT);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
 }
 
 
@@ -123,57 +138,76 @@ void logout() {
 // DRM will fill shared buffer with query content
 void query_player() {
     // drive DRM
-    send_command(QUERY_PLAYER);
-    while (c->drm_state == STOPPED) continue; // wait for DRM to start working
-    while (c->drm_state == WORKING) continue; // wait for DRM to dump file
+    send_command(MIPOD_QUERY);
+    // mp_printf("the mipod state: %d\r\n", mipod_in->status);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
+    // mp_printf("the mipod state: %d\r\n", mipod_in->status);
 
     // print query results
-    mp_printf("Regions: %s", q_region_lookup(c->query, 0));
-    for (int i = 1; i < c->query.num_regions; i++) {
-        printf(", %s", q_region_lookup(c->query, i));
+    /*
+    mp_printf("Regions: %ld", (uint32_t)mipod_in->query_data.rids[0]);
+    for (int i = 1; i < MAX_SHARED_REGIONS; i++) {
+        // printf(", %X", (uint32_t)(mipod_in->query_data.rids[i]));
+        if((uint32_t)(mipod_in->query_data.rids[i]) == NULL){
+            // mp_printf("empty regions!\r\n");
+            i = MAX_SHARED_REGIONS;
+            break;
+        }
+        else printf(", %ld", (uint32_t)(mipod_in->query_data.rids[i]));
     }
     printf("\r\n");
+    */
 
     mp_printf("Authorized users: ");
-    if (c->query.num_users) {
-        printf("%s", q_user_lookup(c->query, 0));
-        for (int i = 1; i < c->query.num_users; i++) {
-            printf(", %s", q_user_lookup(c->query, i));
+    if (mipod_in->query_data.users_list) {
+        printf("%s", q_user_lookup(mipod_in->query_data, 0));
+        for (int i = 1; i < MAX_SHARED_USERS; i++) {
+            // printf(", %X", q_user_lookup(mipod_in->query_data, i));
+            if(strlen(q_user_lookup(mipod_in->query_data, i)) == 0){
+                // mp_printf("empty users list!\r\n");
+                i = MAX_SHARED_USERS;
+                break;
+            }
+            else printf(", %s", q_user_lookup(mipod_in->query_data, i));
         }
     }
-    printf("\r\n");
+    printf("\r\n"); 
 }
 
 
 // queries the DRM about a song
 void query_song(char *song_name) {
     // load the song into the shared buffer
-    if (!load_file(song_name, (void*)&c->song)) {
+    if (!load_file(song_name, &mipod_in->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
 
     // drive DRM
-    send_command(QUERY_SONG);
-    while (c->drm_state == STOPPED) continue; // wait for DRM to start working
-    while (c->drm_state == WORKING) continue; // wait for DRM to finish
+    // send_command(MIPOD_QUERY);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
 
     // print query results
 
-    mp_printf("Regions: %s", q_region_lookup(c->query, 0));
-    for (int i = 1; i < c->query.num_regions; i++) {
-        printf(", %s", q_region_lookup(c->query, i));
+    mp_printf("Regions: %s", q_song_region_lookup(mipod_in->digital_data.play_data.drm, 0));
+    for (int i = 1; i < sizeof(mipod_in->digital_data.play_data.drm.regions); i++) {
+        printf(", %s", q_song_region_lookup(mipod_in->digital_data.play_data.drm, i));
     }
     printf("\r\n");
 
-    mp_printf("Owner: %s", c->query.owner);
+    mp_printf("Owner: %s", mipod_in->digital_data.play_data.drm.owner);
     printf("\r\n");
 
     mp_printf("Authorized users: ");
-    if (c->query.num_users) {
-        printf("%s", q_user_lookup(c->query, 0));
-        for (int i = 1; i < c->query.num_users; i++) {
-            printf(", %s", q_user_lookup(c->query, i));
+    if (mipod_in->query_data.users_list) {
+        printf("%s", q_song_user_lookup(mipod_in->digital_data.play_data.drm, 0));
+        for (int i = 1; i < sizeof(mipod_in->digital_data.play_data.drm.shared_users); i++) {    
+            if (q_song_user_lookup(mipod_in->digital_data.play_data.drm, i) != 0)
+            {
+                printf(", %s", q_song_user_lookup(mipod_in->digital_data.play_data.drm, i));
+            }           
         }
     }
     printf("\r\n");
@@ -192,24 +226,27 @@ void share_song(char *song_name, char *username) {
     }
 
     // load the song into the shared buffer
-    if (!load_file(song_name, (void*)&c->song)) {
+    if (!load_file(song_name, (void*)&mipod_in->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
 
-    strcpy((char *)c->username, username);
+    strncpy((char *)mipod_in->share_data.target_name, username, sizeof(UNAME_SIZE));
+    mipod_in->share_data.drm = mipod_in->digital_data.play_data.drm;
 
     // drive DRM
-    send_command(SHARE);
-    while (c->drm_state == STOPPED) continue; // wait for DRM to start working
-    while (c->drm_state == WORKING) continue; // wait for DRM to share song
+    send_command(MIPOD_SHARE);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start sorking
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to share song
 
     // request was rejected if WAV length is 0
-    length = c->song.wav_size;
+    length = mipod_in->digital_data.wav_size;
     if (length == 0) {
         mp_printf("Share rejected\r\n");
         return;
     }
+
+    length = length + 1368;
 
     // open output file
     fd = open(song_name, O_WRONLY);
@@ -221,7 +258,7 @@ void share_song(char *song_name, char *username) {
     // write song dump to file
     mp_printf("Writing song to file '%s' (%dB)\r\n", song_name, length);
     while (written < length) {
-        wrote = write(fd, (char *)&c->song + written, length - written);
+        wrote = write(fd, (char *)&mipod_in->share_data.drm + written, length - written);
         if (wrote == -1) {
             mp_printf("Error in writing file! Error = %d\r\n", errno);
             return;
@@ -235,61 +272,61 @@ void share_song(char *song_name, char *username) {
 
 // plays a song and enters the playback command loop
 int play_song(char *song_name) {
-    char usr_cmd[USR_CMD_SZ + 1], *cmd = NULL, *arg1 = NULL, *arg2 = NULL;
+    char usr_ops[USR_CMD_SZ + 1], *ops = NULL, *arg1 = NULL, *arg2 = NULL;
 
     // load song into shared buffer
-    if (!load_file(song_name, (void*)&c->song)) {
+    if (!load_file(song_name, (void*)&mipod_in->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return 0;
     }
 
     // drive the DRM
-    send_command(PLAY);
-    while (c->drm_state == STOPPED) continue; // wait for DRM to start playing
+    send_command(MIPOD_PLAY);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start playing
 
     // play loop
     while(1) {
         // get a valid command
         do {
             print_prompt_msg(song_name);
-            fgets(usr_cmd, USR_CMD_SZ, stdin);
+            fgets(usr_ops, USR_CMD_SZ, stdin);
 
             // exit playback loop if DRM has finished song
-            if (c->drm_state == STOPPED) {
+            if (mipod_in->status == MIPOD_STOP) {
                 mp_printf("Song finished\r\n");
                 return 0;
             }
-        } while (strlen(usr_cmd) < 2);
+        } while (strlen(usr_ops) < 2);
 
         // parse and handle command
-        parse_input(usr_cmd, &cmd, &arg1, &arg2);
-        if (!cmd) {
+        parse_input(usr_ops, &ops, &arg1, &arg2);
+        if (!ops) {
             continue;
-        } else if (!strcmp(cmd, "help")) {
+        } else if (!strcmp(ops, "help")) {
             print_playback_help();
-        } else if (!strcmp(cmd, "resume")) {
-            send_command(PLAY);
+        } else if (!strcmp(ops, "resume")) {
+            send_command(MIPOD_PLAY);
             usleep(200000); // wait for DRM to print
-        } else if (!strcmp(cmd, "pause")) {
-            send_command(PAUSE);
+        } else if (!strcmp(ops, "pause")) {
+            send_command(MIPOD_PAUSE);
             usleep(200000); // wait for DRM to print
-        } else if (!strcmp(cmd, "stop")) {
-            send_command(STOP);
+        } else if (!strcmp(ops, "stop")) {
+            send_command(MIPOD_STOP);
             usleep(200000); // wait for DRM to print
             break;
-        } else if (!strcmp(cmd, "restart")) {
-            send_command(RESTART);
-        } else if (!strcmp(cmd, "exit")) {
+        } else if (!strcmp(ops, "restart")) {
+            send_command(MIPOD_RESTART);
+        } else if (!strcmp(ops, "exit")) {
             mp_printf("Exiting...\r\n");
-            send_command(STOP);
+            send_command(MIPOD_STOP);
             return -1;
-        } else if (!strcmp(cmd, "rw")) {
+        } else if (!strcmp(ops, "rw")) {
             mp_printf("Unsupported feature.\r\n\r\n");
             print_playback_help();
-        } else if (!strcmp(cmd, "ff")) {
+        } else if (!strcmp(ops, "ff")) {
             mp_printf("Unsupported feature.\r\n\r\n");
             print_playback_help();
-        } else if (!strcmp(cmd, "lyrics")) {
+        } else if (!strcmp(ops, "lyrics")) {
             mp_printf("Unsupported feature.\r\n\r\n");
             print_playback_help();
         } else {
@@ -307,18 +344,19 @@ void digital_out(char *song_name) {
     char fname[64];
 
     // load file into shared buffer
-    if (!load_file(song_name, (void*)&c->song)) {
+    if (!load_file(song_name, (void*)&mipod_in->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
 
     // drive DRM
-    send_command(DIGITAL_OUT);
-    while (c->drm_state == STOPPED) continue; // wait for DRM to start working
-    while (c->drm_state == WORKING) continue; // wait for DRM to dump file
+    send_command(MIPOD_DIGITAL);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
 
     // open digital output file
-    int written = 0, wrote, length = c->song.file_size + 8;
+    int written = 0, wrote, length = mipod_in->digital_data.wav_size + 8;   // this 8???
+    sprintf(fname, "%s.dout", song_name);
     int fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC);
     if (fd == -1){
         mp_printf("Failed to open file! Error = %d\r\n", errno);
@@ -328,7 +366,7 @@ void digital_out(char *song_name) {
     // write song dump to file
     mp_printf("Writing song to file '%s' (%dB)\r\n", fname, length);
     while (written < length) {
-        wrote = write(fd, (char *)&c->song + written, length - written);
+        wrote = write(fd, (char *)&mipod_in->digital_data + written, length - written);
         if (wrote == -1) {
             mp_printf("Error in writing file! Error = %d \r\n", errno);
             return;
@@ -346,18 +384,17 @@ void digital_out(char *song_name) {
 int main(int argc, char** argv)
 {
     int mem;
-    char usr_cmd[USR_CMD_SZ + 1], *cmd = NULL, *arg1 = NULL, *arg2 = NULL;
-    memset(usr_cmd, 0, USR_CMD_SZ + 1);
+    char usr_ops[USR_CMD_SZ + 1], *ops = NULL, *arg1 = NULL, *arg2 = NULL;
+    memset(usr_ops, 0, USR_CMD_SZ + 1);
 
     // open command channel
     mem = open("/dev/uio0", O_RDWR);
-    c = mmap(NULL, sizeof(cmd_channel), PROT_READ | PROT_WRITE,
-             MAP_SHARED, mem, 0);
-    if (c == MAP_FAILED){
+    mipod_in = mmap(NULL, sizeof(mipod_buffer), PROT_READ | PROT_WRITE, MAP_SHARED, mem, 0);
+    if (mipod_in == MAP_FAILED){
         mp_printf("MMAP Failed! Error = %d\r\n", errno);
         return -1;
     }
-    mp_printf("Command channel open at %p (%dB)\r\n", c, sizeof(cmd_channel));
+    mp_printf("Command channel open at %p (%dB)\r\n", mipod_in, sizeof(mipod_buffer));
 
     // dump player information before command loop
     query_player();
@@ -366,30 +403,30 @@ int main(int argc, char** argv)
     while (1) {
         // get command
         print_prompt();
-        fgets(usr_cmd, USR_CMD_SZ, stdin);
+        fgets(usr_ops, USR_CMD_SZ, stdin);
 
         // parse and handle command
-        parse_input(usr_cmd, &cmd, &arg1, &arg2);
-        if (!cmd) {
+        parse_input(usr_ops, &ops, &arg1, &arg2);
+        if (!ops) {
             continue;
-        } else if (!strcmp(cmd, "help")) {
+        } else if (!strcmp(ops, "help")) {
             print_help();
-        } else if (!strcmp(cmd, "login")) {
+        } else if (!strcmp(ops, "login")) {
             login(arg1, arg2);
-        } else if (!strcmp(cmd, "logout")) {
+        } else if (!strcmp(ops, "logout")) {
             logout();
-        } else if (!strcmp(cmd, "query")) {
-            query_song(arg1);
-        } else if (!strcmp(cmd, "play")) {
+        } else if (!strcmp(ops, "query")) {
+        	query_song(arg1);
+        } else if (!strcmp(ops, "play")) {
             // break if exit was commanded in play loop
             if (play_song(arg1) < 0) {
                 break;
             }
-        } else if (!strcmp(cmd, "digital_out")) {
-            digital_out(arg1);
-        } else if (!strcmp(cmd, "share")) {
+        } else if (!strcmp(ops, "digital")) {
+        	digital_out(arg1);
+        } else if (!strcmp(ops, "share")) {
             share_song(arg1, arg2);
-        } else if (!strcmp(cmd, "exit")) {
+        } else if (!strcmp(ops, "exit")) {
             mp_printf("Exiting...\r\n");
             break;
         } else {
@@ -399,7 +436,7 @@ int main(int argc, char** argv)
     }
 
     // unmap the command channel
-    munmap((void*)c, sizeof(cmd_channel));
+    munmap((void*)mipod_in, sizeof(mipod_buffer));
 
     return 0;
 }

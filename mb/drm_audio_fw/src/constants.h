@@ -1,35 +1,52 @@
-#ifndef SRC_CONSTANTS_H_
-#define SRC_CONSTANTS_H_
+#pragma once
+#ifndef CONSTANTS_H
+#define CONSTANTS_H
 
 #include "xil_printf.h"
 
-// shared DDR address
-#define SHARED_DDR_BASE (0x20000000 + 0x1CC00000)
+//from constants.h mitre file:
+#define MAX_SONG_SZ (1<<25) //33554432 == 32 mib (more than system ram lol)
 
-// memory constants
-#define CHUNK_SZ 16000
+#define PKEY_SIZE 32 //see: eddsa keygen
+#define UNAME_SIZE 16 //see: ectf requirements (it is actually 15, but each name is nul-padded to 16 for obvious reasons)
+#define SALT_SIZE 16 //see: common sense
+#define PIN_SIZE 64 //see: ectf requirement
+
+#define HASH_SIZE 64
+
+#define INVALID_UID -1
+#define MAX_SHARED_USERS 64 //see: ectf requirements, 3.3.5
+
+#define EDDSA_SECRET_SIZE 32 //I think it may actually be 64, but it looks like 1/2 of that is the "random" number generated and 1/2 the public key, so who knows?
+#define EDDSA_PUBLIC_SIZE 32
+#define SODIUM_EDDSA_SECRET_SIZE (EDDSA_SECRET_SIZE + EDDSA_PUBLIC_SIZE)
+#define EDDSA_SIG_SIZE 64 
+
+#define ARGON2_THREADS 1
+#define ARGON2_LANES 1
+#define INVALID_UID -1
+#define MAX_SHARED_USERS 64 //see: ectf requirements, 3.3.5
+
+#define HMAC_SIG_SIZE 64
+
+#define CIPHER_BLOCKSIZE 64 //the block size of the stream cipher being used for song encryption.
+//useage of chacha20 or aes-256 is recommended.
+
+#define MAX_SHARED_REGIONS 32
+#define MAX_QUERY_REGIONS MAX_SHARED_REGIONS /*TOTAL_REGIONS*/
+#define INVALID_RID -1
+
+#define SHARED_DDR_BASE (0x20000000 + 0x1CC00000) //from mitre constants.h, this may need to change
+
+#define SEGMENT_BUF_SIZE 0x1000 //4 KB, pretty pricey but w/e for now
+#define SEGMENT_SONG_SIZE (SEGMENT_BUF_SIZE - sizeof(struct segment_trailer))
+
+#define PCM_DRV_BUFFER_SIZE 16000
 #define FIFO_CAP 4096*4
-
-// number of seconds to record/playback
-#define PREVIEW_TIME_SEC 30
-
-// ADC/DAC sampling rate in Hz
-#define AUDIO_SAMPLING_RATE 48000
-#define BYTES_PER_SAMP 2
-#define PREVIEW_SZ (PREVIEW_TIME_SEC * AUDIO_SAMPLING_RATE * BYTES_PER_SAMP)
 
 // printing utility
 #define MB_PROMPT "\r\nMB> "
 #define mb_printf(...) xil_printf(MB_PROMPT __VA_ARGS__)
-
-// protocol constants
-#define MAX_REGIONS 64
-#define REGION_NAME_SZ 64
-#define MAX_USERS 64
-#define USERNAME_SZ 64
-#define MAX_PIN_SZ 64
-#define MAX_SONG_SZ (1<<25)
-
 
 // LED colors and controller
 struct color {
@@ -38,88 +55,12 @@ struct color {
     u32 b;
 };
 
-
-// struct to interpret shared buffer as a query
-typedef struct {
-    int num_regions;
-    int num_users;
-    char owner[USERNAME_SZ];
-    char regions[MAX_REGIONS * REGION_NAME_SZ];
-    char users[MAX_USERS * USERNAME_SZ];
-} query;
-
 // simulate array of 64B names without pointer indirection
-#define q_region_lookup(q, i) (q.regions + (i * REGION_NAME_SZ))
-#define q_user_lookup(q, i) (q.users + (i * USERNAME_SZ))
+#define q_region_lookup(q, i) (q.rids + (i * sizeof(uint32_t)))
+#define q_user_lookup(q, i) (q.users_list + (i * UNAME_SIZE))
 
+// query information for song (drm)
+#define q_song_region_lookup(q, i) (q.regions[i])
+#define q_song_user_lookup(q, i) (q.shared_users[UNAME_SIZE][i])
 
-// struct to interpret drm metadata
-typedef struct __attribute__((__packed__)) {
-    char md_size;
-    char owner_id;
-    char num_regions;
-    char num_users;
-    char buf[];
-} drm_md;
-
-
-// struct to interpret shared buffer as a drm song file
-// packing values skip over non-relevant WAV metadata
-typedef struct __attribute__((__packed__)) {
-    char packing1[4];
-    u32 file_size;
-    char packing2[32];
-    u32 wav_size;
-    drm_md md;
-} song;
-
-// accessors for variable-length metadata fields
-#define get_drm_rids(d) (d.md.buf)
-#define get_drm_uids(d) (d.md.buf + d.md.num_regions)
-#define get_drm_song(d) ((char *)(&d.md) + d.md.md_size)
-
-
-// shared buffer values
-enum commands { QUERY_PLAYER, QUERY_SONG, LOGIN, LOGOUT, SHARE, PLAY, STOP, DIGITAL_OUT, PAUSE, RESTART, FF, RW };
-enum states   { STOPPED, WORKING, PLAYING, PAUSED };
-
-
-// struct to interpret shared command channel
-typedef volatile struct __attribute__((__packed__)) {
-    char cmd;                   // from commands enum
-    char drm_state;             // from states enum
-    char login_status;          // 0 = logged off, 1 = logged on
-    char padding;               // not used
-    char username[USERNAME_SZ]; // stores logged in or attempted username
-    char pin[MAX_PIN_SZ];       // stores logged in or attempted pin
-
-    // shared buffer is either a drm song or a query
-    union {
-        song song;
-        query query;
-    };
-} cmd_channel;
-
-
-// local store for drm metadata
-typedef struct {
-    u8 md_size;
-    u8 owner_id;
-    u8 num_regions;
-    u8 rids[MAX_REGIONS];
-    u8 num_users;
-    u8 uids[MAX_USERS];
-} song_md;
-
-
-// store of internal state
-typedef struct {
-    char logged_in;             // whether or not a user is logged on
-    u8 uid;                     // logged on user id
-    char username[USERNAME_SZ]; // logged on username
-    char pin[MAX_PIN_SZ];       // logged on pin
-    song_md song_md;            // current song metadata
-} internal_state;
-
-
-#endif /* SRC_CONSTANTS_H_ */
+#endif // !CONSTANTS_H

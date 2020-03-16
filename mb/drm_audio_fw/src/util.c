@@ -5,20 +5,20 @@
 /*
  * This function enables the PWM module and sets its period so it can drive the RGB LED
  */
-void enableLED(u32* led){
-    PWM_Enable((u32)led);
-    PWM_Set_Period((u32)led, (u32)59999);
-}
+//void enableLED(u32* led){
+//    PWM_Enable((u32)led);
+//    PWM_Set_Period((u32)led, (u32)59999);
+//}
 
 /*
  * This function drives the PWM based upon the input color struct
  * It drives LD0 with the input color struct
  */
-void setLED(u32* led, struct color c){
-	PWM_Set_Duty((u32)led, c.b, (u32)0);
-	PWM_Set_Duty((u32)led, c.g, (u32)1);
-	PWM_Set_Duty((u32)led, c.r, (u32)2);
-}
+//void setLED(u32* led, struct color c){
+//	PWM_Set_Duty((u32)led, c.b, (u32)0);
+//	PWM_Set_Duty((u32)led, c.g, (u32)1);
+//	PWM_Set_Duty((u32)led, c.r, (u32)2);
+//}
 
 /******************************************************************************/
 /**
