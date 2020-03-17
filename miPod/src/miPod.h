@@ -46,12 +46,12 @@ typedef struct {
 */
 
 // simulate array of 64B names without pointer indirection
-#define q_region_lookup(q, i) (q.rids + (i * sizeof(uint32_t)))
+#define q_region_lookup(q, i) (q.regions + (i * REGION_NAME_SZ))
 #define q_user_lookup(q, i) (q.users_list + (i * UNAME_SIZE))
 
 // query information for song (drm)
 #define q_song_region_lookup(q, i) (q.regions[i])
-#define q_song_user_lookup(q, i) (q.shared_users[UNAME_SIZE][i])
+#define q_song_user_lookup(q, i) (q.shared_users[i][UNAME_SIZE])
 
 
 // struct to interpret drm metadata
@@ -148,6 +148,7 @@ enum mipod_ops {
     MIPOD_LOGOUT,
 
     MIPOD_QUERY,
+    // MIPOD_QUERY_SONG,
     MIPOD_DIGITAL,
     MIPOD_SHARE
 };
@@ -200,7 +201,8 @@ typedef struct __attribute__((__packed__)) {
 } mipod_play_data;
 
 typedef struct {
-    uint32_t rids[MAX_QUERY_REGIONS]; //holds all valid region IDS. the actual region strings should be stored client-side.
+    char regions[MAX_SHARED_REGIONS * REGION_NAME_SZ];
+    // uint32_t rids[MAX_QUERY_REGIONS]; //holds all valid region IDS. the actual region strings should be stored client-side.
     char users_list[TOTAL_USERS][UNAME_SIZE]; //holds all valid users.
     /*
     Initial boot output :
@@ -229,9 +231,9 @@ typedef volatile struct __attribute__((__packed__)) {
     union {
         mipod_login_data login_data;
         // struct mipod_play_data play_data;
-        mipod_query_data query_data;
-        mipod_digital_data digital_data;
+        mipod_query_data query_data;       
         mipod_share_data share_data;
+        mipod_digital_data digital_data;
         char buf[MAX_SONG_SZ];
     };
 }mipod_buffer;

@@ -33,6 +33,7 @@
 //useage of chacha20 or aes-256 is recommended.
 
 #define MAX_SHARED_REGIONS 32
+#define REGION_NAME_SZ 64
 #define MAX_QUERY_REGIONS MAX_SHARED_REGIONS /*TOTAL_REGIONS*/
 #define INVALID_RID -1
 
@@ -56,7 +57,7 @@ struct color {
 };
 
 // simulate array of 64B names without pointer indirection
-#define q_region_lookup(q, i) (q.rids + (i * sizeof(uint32_t)))
+#define q_region_lookup(q, i) (q.regions + (i * REGION_NAME_SZ))
 #define q_user_lookup(q, i) (q.users_list + (i * UNAME_SIZE))
 
 // query information for song (drm)

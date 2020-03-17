@@ -22,6 +22,7 @@
 //useage of chacha20 or aes-256 is recommended.
 
 #define MAX_SHARED_REGIONS 32
+#define REGION_NAME_SZ 64
 #define MAX_QUERY_REGIONS MAX_SHARED_REGIONS /*TOTAL_REGIONS*/
 #define INVALID_RID -1
 

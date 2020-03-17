@@ -94,11 +94,14 @@ size_t load_file(char *fname, mipod_digital_data *digital_data) {
     // digital_song->drm = song_buf->drm;
     // memcpy(digital_song->filedata, song_buf->filedata, sb.st_size - sizeof(song_buf->drm));
     read(fd, &(digital_data->play_data), sb.st_size);
-    digital_data->wav_size = digital_data->play_data.drm.wavdata.blk_align - 44 + 8;
+    mp_printf("owner: %s\r\n", digital_data->play_data.drm.owner);
+    mp_printf("digital_data->play_data.drm.blk_align: (%dB)\r\n", digital_data->play_data.drm.wavdata.blk_align);
+    digital_data->wav_size = (uint16_t)(digital_data->play_data.drm.wavdata.blk_align) - 44 + 8;
+    mp_printf("wav_size: (%ldB)\r\n", digital_data->wav_size);
     
     close(fd);
 
-    mp_printf("Loaded file into shared buffer (%dB)\r\n", sb.st_size);
+    mp_printf("Loaded file into shared buffer (%ldB)\r\n", sb.st_size);
     return sb.st_size;
 }
 
@@ -159,6 +162,20 @@ void query_player() {
     printf("\r\n");
     */
 
+    mp_printf("Regions: %s", q_region_lookup(mipod_in->query_data, 0));
+    if (mipod_in->query_data.users_list) {
+        for (int i = 1; i < MAX_SHARED_REGIONS; i++) {
+            // printf(", %X", q_user_lookup(mipod_in->query_data, i));
+            if(strlen(q_region_lookup(mipod_in->query_data, i)) == 0){
+                // mp_printf("empty users list!\r\n");
+                i = MAX_SHARED_REGIONS;
+                break;
+            }
+            else printf(", %s", q_region_lookup(mipod_in->query_data, i));
+        }
+    }
+    printf("\r\n"); 
+
     mp_printf("Authorized users: ");
     if (mipod_in->query_data.users_list) {
         printf("%s", q_user_lookup(mipod_in->query_data, 0));
@@ -186,8 +203,8 @@ void query_song(char *song_name) {
 
     // drive DRM
     // send_command(MIPOD_QUERY);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
-    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
+    // while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    // while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
 
     // print query results
 

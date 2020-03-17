@@ -130,7 +130,8 @@ typedef struct __attribute__((__packed__)) {
 } mipod_play_data;
 
 typedef struct {
-    uint32_t rids[MAX_QUERY_REGIONS]; //holds all valid region IDS. the actual region strings should be stored client-side.
+    char regions[MAX_SHARED_REGIONS * REGION_NAME_SZ];
+    // uint32_t rids[MAX_QUERY_REGIONS]; //holds all valid region IDS. the actual region strings should be stored client-side.
     char users_list[TOTAL_USERS][UNAME_SIZE]; //holds all valid users.
     /*
     Initial boot output :
@@ -160,8 +161,8 @@ typedef volatile struct __attribute__((__packed__)) {
         mipod_login_data login_data;
         // struct mipod_play_data play_data;
         mipod_query_data query_data;
-        mipod_digital_data digital_data;
         mipod_share_data share_data;
+        mipod_digital_data digital_data;
         char buf[MAX_SONG_SZ];
     };
 }mipod_buffer;
@@ -305,7 +306,7 @@ void gpio_entry() {
         case MIPOD_LOGIN: mb_printf("user login\r\n"); res = login_user(); break;
         case MIPOD_LOGOUT: mb_printf("user logout\r\n"); res = logout_user(); break;
         case MIPOD_QUERY: 
-            mb_printf("startup mipod query\r\n");
+            // mb_printf("startup mipod query\r\n");
             res = startup_query(); 
             break;
         case MIPOD_DIGITAL: mb_printf("digital output command\r\n"); res = digitize_song(); break;
@@ -436,6 +437,37 @@ static bool valid_region(uint32_t rid) {
     return false;
 }
 
+// looks up the region name corresponding to the rid
+static bool rid_to_region_name(char rid, char **region_name, int provisioned_only) {
+    for (int i = 0; i < NUM_REGIONS; i++) {
+        if (rid == REGION_IDS[i] &&
+            (!provisioned_only || valid_region(rid))) {
+            *region_name = (char *)REGION_NAMES[i];
+            return true;
+        }
+    }
+
+    mb_printf("Could not find region ID '%d'\r\n", rid);
+    *region_name = "<unknown region>";
+    return false;
+}
+
+
+// looks up the rid corresponding to the region name
+static bool region_name_to_rid(char *region_name, char *rid, int provisioned_only) {
+    for (int i = 0; i < NUM_REGIONS; i++) {
+        if (!strcmp(region_name, REGION_NAMES[i]) &&
+            (!provisioned_only || valid_region(REGION_IDS[i]))) {
+            *rid = REGION_IDS[i];
+            return true;
+        }
+    }
+
+    mb_printf("Could not find region name '%s'\r\n", region_name);
+    *rid = -1;
+    return false;
+}
+
 #ifdef _MSC_VER
 #pragma endregion 
 #endif
@@ -541,9 +573,21 @@ returns true/false for if the user is OK or not.
 */
 bool gen_check_user_secret(uint32_t uid) {
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
+    // argon2_hash(pin_buffer);
+    // mb_printf("strlen(pin_buffer): %d", strlen(pin_buffer));
+    // for (size_t i = 0; i < strlen(pin_buffer); i++)
+    // {
+    //     mb_printf(" %d ", pin_buffer[i]);
+    // }
     pbkdf2(pin_buffer, sizeof(pin_buffer), provisioned_users[uid].salt, kb); //note: this doesnt use the full output in keypair generation
     clear_buffer(pin_buffer);
     //note: we aren't clearing the key buffer because anyone reading memory can get the provisioned_users hash
+    // mb_printf("\r\n");
+    // for (size_t i = 0; i < sizeof(kb); i++)
+    // {
+    //     mb_printf(" %d ", kb[i]);
+    // }
+    
     return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
 }
 
@@ -580,6 +624,7 @@ bool login_user(void) {
         }
 
         copytolocal(pin_buffer, mipod_in->login_data.pin, PIN_SIZE); //no TOCTOU here
+        // mb_printf("sizeof(pin_buffer): %d", strlen(pin_buffer));
 
         //if everything is fine, go ahead and log them in.
         if (!gen_check_user_secret(user)) {
@@ -947,13 +992,14 @@ unload:;
 bool startup_query(void) {
     // mb_printf("Starting queried player regions and users\r\n");  
     for (int i = 0; i < TOTAL_REGIONS; i++){
-        mipod_in->query_data.rids[i] = provisioned_regions[i];
+        copyfromlocal((char *)q_region_lookup(mipod_in->query_data, i), REGION_NAMES[provisioned_regions[i]], UNAME_SIZE);
+        // mipod_in->query_data.rids[i] = provisioned_regions[i];
     } 
     // copyfromlocal(mipod_in->query_data.rids, provisioned_regions, sizeof(provisioned_regions));
     
-    for (size_t j = 0; j < TOTAL_USERS; ++j) {
+    for (size_t j = 0; j < TOTAL_USERS; j++) {
         copyfromlocal((char *)q_user_lookup(mipod_in->query_data, j), provisioned_users[j].name, UNAME_SIZE);
-        char *user_tmp = provisioned_users[j].name;
+        // char *user_tmp = provisioned_users[j].name;
         // mb_printf("users_list: %s", q_user_lookup(mipod_in->query_data, i));
     }
 
