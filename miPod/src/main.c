@@ -202,7 +202,10 @@ void query_song(char *song_name) {
             {
                 printf(", %s", q_song_region_lookup(mipod_in->query_data, i));
             }   
-            else i = MAX_SHARED_REGIONS;   
+            else {
+                printf("No shared users!\r\n");
+                i = MAX_SHARED_USERS; 
+            }  
         }
         printf("\r\n");
     }
