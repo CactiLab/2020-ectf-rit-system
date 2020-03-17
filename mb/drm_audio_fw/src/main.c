@@ -496,14 +496,14 @@ static bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
     // mb_printf("mp_sig: ");
     // for (size_t i = 0; i < HASH_OUTSIZE; i++)
     // {
-    //     mb_printf("%x, ", current_song_header.mp_sig[i]);
+    //     mb_printf("%x ", current_song_header.mp_sig[i]);
     // }
     // printf("\r\n");
     hmac(mipod_key, data_start, sig_offset, sig);
     // mb_printf("hmac_mp_sig: ");
     // for (size_t i = 0; i < HASH_OUTSIZE; i++)
     // {
-    //     mb_printf("%x, ", sig[i]);
+    //     mb_printf("%x ", sig[i]);
     // }
     // printf("\r\n");
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
@@ -519,10 +519,10 @@ data layout looks like:
 static bool verify_user_blocksig(void* data_start, size_t sig_offset, uint32_t uid) {
    uint8_t sig[HASH_OUTSIZE];
     hmac(provisioned_users[uid].hash, data_start, sig_offset, sig);
-    mb_printf("hmac_user_sig: ");
+    // mb_printf("hmac_user_sig: ");
     // for (size_t i = 0; i < HASH_OUTSIZE; i++)
     // {
-    //     mb_printf("%x, ", sig[i]);
+    //     mb_printf("%x ", sig[i]);
     // }
     // printf("\r\n");
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
@@ -713,6 +713,7 @@ int32_t load_song_header(drm_header * arm_drm) {
     //check the edc signature of the mipod application
     if (!verify_mp_blocksig(&current_song_header, offsetof(drm_header, mp_sig))) {
         //if its a bad signature, we don't want to play ANY of it, so make sure that we clear it as being loaded.
+        mb_printf("Invalid song!\r\n");
         clear_obj(current_song_header);
         TAMPER();
         return SONG_BADSIG;
@@ -731,12 +732,15 @@ region_success:;
 
     //check to see if the owner exists
     uint32_t uid = get_uid_by_name(current_song_header.owner);
-    if (uid == INVALID_UID)
+    if (uid == INVALID_UID){
+        mb_printf("Invalid user! play 30s.\r\n");
         return SONG_BADUSER;
-
+    }
+        
     //check the edc signature of the shared section against the owners key
     if (!verify_user_blocksig((uint8_t*)&current_song_header, offsetof(drm_header, owner_sig), uid)) {
         clear_obj(current_song_header);
+        mb_printf("Invalid user!\r\n");
         return SONG_BADSIG;
     }
 
@@ -744,6 +748,7 @@ region_success:;
     current_uid = 2;   //the login_user haven't finished, so set the owner id
     if (uid == current_uid) {
         own_current_song = true;
+        mb_printf("You are the owner of the song, now starting to play the full song.\r\n");
         return SONG_OWNER;
     }
 
@@ -752,8 +757,10 @@ region_success:;
         uid = get_uid_by_name(current_song_header.shared_users[i]);
         if (uid == INVALID_UID)
             break;
-        if (uid == current_uid)
+        if (uid == current_uid){
+            mb_printf("You are shared withe the song, now starting to play the full song.\r\n");
             return SONG_SHARED;
+        }        
     }
 
     //the song is total valid, but the user isn't allowed to play it
@@ -930,23 +937,24 @@ static bool play_song(void) {
     */
     size_t offset = 0, bytes_max = 0; //the maximum number of bytes to play in the song, and the total number we have already played.
     switch (load_song_header(&mipod_in->digital_data.play_data.drm)) {
-    case(SONG_BADUSER): mb_printf("Invalid user! play 30s.\r\n");
-    case(SONG_BADREGION):; //we can play 30s, but no more
-        mb_printf("Bad region, play 30s.\r\n");
+    case(SONG_BADUSER):;
+    case(SONG_BADREGION):mb_printf("Bad region, play 30s.\r\n"); //we can play 30s, but no more
         bytes_max = SONGLEN_30S;
+        mipod_in->status = STATE_PLAYING;
         break;
     case(SONG_BADSIG):;
-        mb_printf("Invalid song!\r\n");
         unload_song_header();
+        mipod_in->status = STATE_FAILED;
         return false;
-    case(SONG_OWNER): mb_printf("You are the owner of the song, now starting to play the full song.\r\n");
-    case(SONG_SHARED): mb_printf("You are shared withe the song, now starting to play the full song.\r\n"); //we can play the full song
+    case(SONG_OWNER): ;
+    case(SONG_SHARED): ; //we can play the full song
+        mipod_in->status = STATE_PLAYING;
         break;
 #ifdef __GNUC__
     default:__builtin_unreachable();
 #endif
     }
-    mipod_in->status = STATE_PLAYING; //no racing here
+    // mipod_in->status = STATE_PLAYING; //no racing here
     enable_interrupts();
 restart_playing:;
     mipod_in->status = STATE_PLAYING;

@@ -217,7 +217,7 @@ void query_song(char *song_name) {
                 printf(", %s", q_song_user_lookup(mipod_in->digital_data.play_data.drm, i));
             }     
             else {
-                printf("\r\n No shared users!\r\n");
+                printf("No shared users!\r\n");
                 i = MAX_SHARED_USERS; 
             }     
         }

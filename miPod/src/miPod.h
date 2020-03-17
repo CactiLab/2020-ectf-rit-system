@@ -106,6 +106,13 @@ typedef struct __attribute__((__packed__)) { //sizeof() = 1368
     uint8_t owner_sig[HMAC_SIG_SIZE]; //a signature (using the owner's private key) for all preceeding data. resets whenever new user is shared with.
 } drm_header;
 
+struct segment_trailer {
+    uint8_t id[SONGID_LEN];
+    uint32_t idx;
+    uint32_t next_segment_size;
+    uint8_t sig[HMAC_SIG_SIZE];
+    char _pad_[40]; //do not use this. for cryptographic padding purposes only.
+};
 
 // struct to interpret shared buffer as a drm song file
 // packing values skip over non-relevant WAV metadata
