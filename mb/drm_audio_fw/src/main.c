@@ -43,6 +43,7 @@ enum mipod_ops {
     MIPOD_LOGOUT,
 
     MIPOD_QUERY,
+    MIPOD_QUERY_SONG,
     MIPOD_DIGITAL,
     MIPOD_SHARE
 };
@@ -131,6 +132,7 @@ typedef struct __attribute__((__packed__)) {
 
 typedef struct {
     char regions[MAX_SHARED_REGIONS * REGION_NAME_SZ];
+    char song_regions[MAX_SHARED_REGIONS * REGION_NAME_SZ];
     // uint32_t rids[MAX_QUERY_REGIONS]; //holds all valid region IDS. the actual region strings should be stored client-side.
     char users_list[TOTAL_USERS][UNAME_SIZE]; //holds all valid users.
     /*
@@ -274,6 +276,7 @@ static bool play_song(void);
 static bool login_user(void);
 static bool logout_user(void);
 static bool startup_query(void);
+static bool query_song(void);
 static bool digitize_song(void);
 static bool share_song(void);
 
@@ -308,6 +311,9 @@ void gpio_entry() {
         case MIPOD_QUERY: 
             // mb_printf("startup mipod query\r\n");
             res = startup_query(); 
+            break;
+        case MIPOD_QUERY_SONG:
+            res = query_song();
             break;
         case MIPOD_DIGITAL: mb_printf("digital output command\r\n"); res = digitize_song(); break;
         case MIPOD_SHARE: mb_printf("sharing the song\r\n"); res = share_song(); break;
@@ -1005,6 +1011,20 @@ bool startup_query(void) {
 
     mb_printf("Queried player (%d regions, %d users)\r\n", TOTAL_REGIONS, TOTAL_USERS);
     // mipod_in->status = STATE_SUCCESS;
+    return true;
+}
+
+bool query_song(void) {
+    char *name;
+    // mb_printf("Starting queried player regions and users\r\n");  
+    for (int i = 0; i < NUM_REGIONS; i++){
+        // char index = mipod_in->digital_data.play_data.drm.regions[i];
+        // if( i > 0 && strcmp(index, 0))
+        //     i = NUM_REGIONS;
+        rid_to_region_name(mipod_in->digital_data.play_data.drm.regions[i], &name, false);
+        strncpy((char *)q_song_region_lookup(mipod_in->query_data, i), name, UNAME_SIZE);
+        // mb_printf("regions: %s", q_song_region_lookup(mipod_in->query_data, i));
+    } 
     return true;
 }
 

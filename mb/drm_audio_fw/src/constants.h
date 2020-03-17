@@ -58,10 +58,11 @@ struct color {
 
 // simulate array of 64B names without pointer indirection
 #define q_region_lookup(q, i) (q.regions + (i * REGION_NAME_SZ))
+#define q_song_region_lookup(q,i) (q.song_regions + (i * REGION_NAME_SZ))
 #define q_user_lookup(q, i) (q.users_list + (i * UNAME_SIZE))
 
 // query information for song (drm)
-#define q_song_region_lookup(q, i) (q.regions[i])
+// #define q_song_region_lookup(q, i) (q.regions[i])
 #define q_song_user_lookup(q, i) (q.shared_users[UNAME_SIZE][i])
 
 #endif // !CONSTANTS_H

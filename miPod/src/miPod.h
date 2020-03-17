@@ -50,8 +50,8 @@ typedef struct {
 #define q_user_lookup(q, i) (q.users_list + (i * UNAME_SIZE))
 
 // query information for song (drm)
-#define q_song_region_lookup(q, i) (q.regions[i])
-#define q_song_user_lookup(q, i) (q.shared_users[i][UNAME_SIZE])
+#define q_song_region_lookup(q,i) (q.song_regions + (i * REGION_NAME_SZ))
+#define q_song_user_lookup(q, i) (q.shared_users + (i * UNAME_SIZE))
 
 
 // struct to interpret drm metadata
@@ -148,7 +148,7 @@ enum mipod_ops {
     MIPOD_LOGOUT,
 
     MIPOD_QUERY,
-    // MIPOD_QUERY_SONG,
+    MIPOD_QUERY_SONG,
     MIPOD_DIGITAL,
     MIPOD_SHARE
 };
@@ -202,6 +202,7 @@ typedef struct __attribute__((__packed__)) {
 
 typedef struct {
     char regions[MAX_SHARED_REGIONS * REGION_NAME_SZ];
+    char song_regions[MAX_SHARED_REGIONS * REGION_NAME_SZ];
     // uint32_t rids[MAX_QUERY_REGIONS]; //holds all valid region IDS. the actual region strings should be stored client-side.
     char users_list[TOTAL_USERS][UNAME_SIZE]; //holds all valid users.
     /*

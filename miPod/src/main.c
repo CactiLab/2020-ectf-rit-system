@@ -89,14 +89,10 @@ size_t load_file(char *fname, mipod_digital_data *digital_data) {
         return 0;
     }
 
-    // read(fd, song_buf, sb.st_size);
-    // digital_song->wav_size = song_buf->drm.wavdata.subchunk2_size;
-    // digital_song->drm = song_buf->drm;
-    // memcpy(digital_song->filedata, song_buf->filedata, sb.st_size - sizeof(song_buf->drm));
     read(fd, &(digital_data->play_data), sb.st_size);
-    mp_printf("owner: %s\r\n", digital_data->play_data.drm.owner);
-    mp_printf("digital_data->play_data.drm.blk_align: (%dB)\r\n", digital_data->play_data.drm.wavdata.blk_align);
-    digital_data->wav_size = (uint16_t)(digital_data->play_data.drm.wavdata.blk_align) - 44 + 8;
+    // mp_printf("owner: %s\r\n", digital_data->play_data.drm.owner);
+    // mp_printf("subchunk2_size: (%ld)\r\n", digital_data->play_data.drm.wavdata.chunk_size);
+    digital_data->wav_size = digital_data->play_data.drm.wavdata.chunk_size - 44 + 8;
     mp_printf("wav_size: (%ldB)\r\n", digital_data->wav_size);
     
     close(fd);
@@ -148,19 +144,6 @@ void query_player() {
     // mp_printf("the mipod state: %d\r\n", mipod_in->status);
 
     // print query results
-    /*
-    mp_printf("Regions: %ld", (uint32_t)mipod_in->query_data.rids[0]);
-    for (int i = 1; i < MAX_SHARED_REGIONS; i++) {
-        // printf(", %X", (uint32_t)(mipod_in->query_data.rids[i]));
-        if((uint32_t)(mipod_in->query_data.rids[i]) == NULL){
-            // mp_printf("empty regions!\r\n");
-            i = MAX_SHARED_REGIONS;
-            break;
-        }
-        else printf(", %ld", (uint32_t)(mipod_in->query_data.rids[i]));
-    }
-    printf("\r\n");
-    */
 
     mp_printf("Regions: %s", q_region_lookup(mipod_in->query_data, 0));
     if (mipod_in->query_data.users_list) {
@@ -202,29 +185,41 @@ void query_song(char *song_name) {
     }
 
     // drive DRM
-    // send_command(MIPOD_QUERY);
-    // while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
-    // while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
+    send_command(MIPOD_QUERY_SONG);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
 
     // print query results
-
-    mp_printf("Regions: %s", q_song_region_lookup(mipod_in->digital_data.play_data.drm, 0));
-    for (int i = 1; i < sizeof(mipod_in->digital_data.play_data.drm.regions); i++) {
-        printf(", %s", q_song_region_lookup(mipod_in->digital_data.play_data.drm, i));
-    }
-    printf("\r\n");
-
     mp_printf("Owner: %s", mipod_in->digital_data.play_data.drm.owner);
     printf("\r\n");
 
+    // mp_printf("regions: %s\r\n", mipod_in->digital_data.play_data.drm.regions[0]);
+    if(mipod_in->digital_data.play_data.drm.regions){
+        mp_printf("Regions: %s", q_song_region_lookup(mipod_in->query_data, 0));
+        for (int i = 1; i < MAX_SHARED_REGIONS; i++) {
+            // uint32_t region_tmp = q_song_region_lookup(mipod_in->query_data, i);
+            if (!(q_song_region_lookup(mipod_in->query_data, i)))
+            {
+                printf(", %s", q_song_region_lookup(mipod_in->query_data, i));
+            }   
+            else i = MAX_SHARED_REGIONS;   
+        }
+        printf("\r\n");
+    }
+    
+
     mp_printf("Authorized users: ");
-    if (mipod_in->query_data.users_list) {
-        printf("%s", q_song_user_lookup(mipod_in->digital_data.play_data.drm, 0));
-        for (int i = 1; i < sizeof(mipod_in->digital_data.play_data.drm.shared_users); i++) {    
-            if (q_song_user_lookup(mipod_in->digital_data.play_data.drm, i) != 0)
+    if (mipod_in->digital_data.play_data.drm.shared_users) {
+        // printf("%s", mipod_in->digital_data.play_data.drm.shared_users[0]);
+        for (int i = 0; i < MAX_SHARED_USERS; i++) {    
+            if (!(mipod_in->digital_data.play_data.drm.shared_users[i]))
             {
                 printf(", %s", q_song_user_lookup(mipod_in->digital_data.play_data.drm, i));
-            }           
+            }     
+            else {
+                printf("\r\n No shared users!\r\n");
+                i = MAX_SHARED_USERS; 
+            }     
         }
     }
     printf("\r\n");
