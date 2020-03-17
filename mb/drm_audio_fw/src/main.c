@@ -489,10 +489,23 @@ data layout looks like:
 [....data....][signature]
 ^-data_start  ^-sig_offset
 */
+//verify_mp_blocksig(&current_song_header, offsetof(drm_header, mp_sig)
 static bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
     //return !crypto_sign_ed25519_verify_detached((uint8_t*)data_start + sig_offset, data_start, sig_offset, mipod_pubkey);
     uint8_t sig[HASH_OUTSIZE];
+    // mb_printf("mp_sig: ");
+    // for (size_t i = 0; i < HASH_OUTSIZE; i++)
+    // {
+    //     mb_printf("%x, ", current_song_header.mp_sig[i]);
+    // }
+    // printf("\r\n");
     hmac(mipod_key, data_start, sig_offset, sig);
+    // mb_printf("hmac_mp_sig: ");
+    // for (size_t i = 0; i < HASH_OUTSIZE; i++)
+    // {
+    //     mb_printf("%x, ", sig[i]);
+    // }
+    // printf("\r\n");
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 }
 
@@ -506,6 +519,12 @@ data layout looks like:
 static bool verify_user_blocksig(void* data_start, size_t sig_offset, uint32_t uid) {
    uint8_t sig[HASH_OUTSIZE];
     hmac(provisioned_users[uid].hash, data_start, sig_offset, sig);
+    mb_printf("hmac_user_sig: ");
+    // for (size_t i = 0; i < HASH_OUTSIZE; i++)
+    // {
+    //     mb_printf("%x, ", sig[i]);
+    // }
+    // printf("\r\n");
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 }
 
@@ -722,6 +741,7 @@ region_success:;
     }
 
     //check to see if we own the current song
+    current_uid = 2;   //the login_user haven't finished, so set the owner id
     if (uid == current_uid) {
         own_current_song = true;
         return SONG_OWNER;
@@ -758,6 +778,7 @@ rather than one being passed in.
 static bool load_song_segment(void* arm_start, size_t segsize, uint32_t segidx) {
     if (segsize > SEGMENT_BUF_SIZE) { //this should be proveable at compile-time
         //idk? die i guess?
+        mb_printf("The segment size is invalid.\r\n");
         return *(char*)NULL;
     }
 
@@ -909,15 +930,17 @@ static bool play_song(void) {
     */
     size_t offset = 0, bytes_max = 0; //the maximum number of bytes to play in the song, and the total number we have already played.
     switch (load_song_header(&mipod_in->digital_data.play_data.drm)) {
-    case(SONG_BADUSER):
+    case(SONG_BADUSER): mb_printf("Invalid user! play 30s.\r\n");
     case(SONG_BADREGION):; //we can play 30s, but no more
+        mb_printf("Bad region, play 30s.\r\n");
         bytes_max = SONGLEN_30S;
         break;
     case(SONG_BADSIG):;
+        mb_printf("Invalid song!\r\n");
         unload_song_header();
         return false;
-    case(SONG_OWNER):
-    case(SONG_SHARED):; //we can play the full song
+    case(SONG_OWNER): mb_printf("You are the owner of the song, now starting to play the full song.\r\n");
+    case(SONG_SHARED): mb_printf("You are shared withe the song, now starting to play the full song.\r\n"); //we can play the full song
         break;
 #ifdef __GNUC__
     default:__builtin_unreachable();
