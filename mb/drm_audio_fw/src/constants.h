@@ -7,7 +7,7 @@
 //from constants.h mitre file:
 #define MAX_SONG_SZ (1<<25) //33554432 == 32 mib (more than system ram lol)
 
-#define PKEY_SIZE 32 //see: eddsa keygen
+#define PKEY_SIZE 64 //see: hmac keygen
 #define UNAME_SIZE 16 //see: ectf requirements (it is actually 15, but each name is nul-padded to 16 for obvious reasons)
 #define SALT_SIZE 16 //see: common sense
 #define PIN_SIZE 64 //see: ectf requirement
