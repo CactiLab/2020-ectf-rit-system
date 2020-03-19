@@ -48,16 +48,50 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
     slatMap = {}
     mipodKey = os.urandom(64)
     mipodSlat= os.urandom(16)
+   
+    try:
+        mipodKeyFile = open(os.path.join(device_dir, "mipodKey.secrets"), "w")
+    except Exception as e:
+        print("Unable to open secrets file: {e}".format(e=e))
+        return
+    try:
+        provisioned_userFile = open(os.path.join(device_dir, "provisioned_user.secrets"), "w")
+    except Exception as e:
+        print("Unable to open secrets file: {e}".format(e=e))  
+        return
+    
+    mipodKeyFile.write(f'''
+    {{ "mipodKey" : "{", ".join([  bin(int(keyByte))  for keyByte in mipodKey])}  "}}
+    ''')
+    
+    s = "{"+ '"provisioned_user"'+":[\n"
+    
+ 
+
     for u in user_names:
         perSalt = os.urandom(16)  #16 bit slat
         slatMap[u] = perSalt
         argon2Hash = ph.hash(u+user_secrets[u]['pin'])
-        #print (len(argon2Hash))
+        print (len(argon2Hash))
         hashValue = hashlib.pbkdf2_hmac('sha512', str.encode(argon2Hash), perSalt, 4096)
         #print(len(hashValue))
         #hashValue = PBKDF2(ph.hash(u+user_secrets[u]['pin']), perSalt).read(64) # 256-bit hash
         hasMap[u] = hashValue
     # write secrets
+    counter = 0
+    for u in user_names:
+        s = s + '\n{\n"name": ' + '"'+ u+'",\n "user_hash" : "' 
+        s = s +",".join([str(userHash) for userHash in hasMap[u]])
+        counter = counter + 1
+        if counter == len(user_names):
+            s = s + '"\n}'
+        else:
+            s = s + '"\n},'
+    s =s+"\n]}"
+    print(s)
+    provisioned_userFile.write(f'''
+    {s}
+''')
     device_secrets.write(f'''
 #pragma oncexs
 #ifndef SECRETS_H
