@@ -28,6 +28,10 @@
 
 #include <limits.h>
 #include <stdint.h>
+#include <stdlib.h>
+#include <string.h>
+
+#include <sys/types.h>
 
 #include "crypto_hash_sha512.h"
 #include "common.h"

@@ -202,10 +202,7 @@ void query_song(char *song_name) {
             {
                 printf(", %s", q_song_region_lookup(mipod_in->query_data, i));
             }   
-            else {
-                printf("No shared users!\r\n");
-                i = MAX_SHARED_USERS; 
-            }  
+            else i = MAX_SHARED_REGIONS;   
         }
         printf("\r\n");
     }
@@ -298,6 +295,13 @@ int play_song(char *song_name) {
     // drive the DRM
     send_command(MIPOD_PLAY);
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start playing
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to start playing
+
+    if (mipod_in->status == STATE_FAILED)
+    {
+        mp_printf("Play song failed.\r\n");
+        return -1;
+    }
 
     // play loop
     while(1) {

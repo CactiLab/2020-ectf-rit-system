@@ -3,6 +3,8 @@
 #include <stdint.h>
 #include "memops.h"
 #include "pbkdf2.h"
+#include "sha512.h"
+#include "constants.h"
 
 /*/
 #include "crypto_hash_sha512.h"
@@ -52,10 +54,14 @@ function hmac is
     return hash(o_key_pad || hash(i_key_pad || message)) // Where || is concatenation
 */
 
+
+/*
+
 void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t out[HASH_OUTSIZE]) {
     hash_state_t state;
     uint8_t tmp[HASH_OUTSIZE];
 
+    // init with key
     //get i_key_pad
     for (uint32_t i = 0; i < HASH_BLKSIZE; ++i) 
         key[i] ^= 0x36;
@@ -63,8 +69,9 @@ void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t
     //get inner hash
     HASH_INIT(&state);
     HASH_UPDATE(&state, key, HASH_BLKSIZE);
-    HASH_UPDATE(&state, msg, msgsize);
-    HASH_FINAL(&state, tmp); //not the true output
+
+    // HASH_UPDATE(&state, msg, msgsize);
+    // HASH_FINAL(&state, tmp); //not the true output
     
     //get o_key_pad
     for (uint32_t i = 0; i < HASH_BLKSIZE; ++i)
@@ -73,12 +80,53 @@ void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t
     //get outer hash
     HASH_INIT(&state);
     HASH_UPDATE(&state, key, HASH_BLKSIZE);
-    HASH_UPDATE(&state, tmp, HASH_OUTSIZE); //out stores the intermediate message hash RN
+
+    // update with msg
+    HASH_UPDATE(&state, msg, HASH_OUTSIZE); //out stores the intermediate message hash RN
+
+    // get final output
+    HASH_FINAL(&state, tmp);
+    HASH_UPDATE(&state, tmp, HASH_BLKSIZE);
     HASH_FINAL(&state, out);
 
     //revert to original key
     for (uint32_t i = 0; i < HASH_BLKSIZE; ++i)
         key[i] ^= 0x5c;
+}
+*/
+
+void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t out[HASH_OUTSIZE]) {
+    sha512_context state;
+    // uint8_t tmp[HASH_OUTSIZE];
+    unsigned char k_ipad[KEY_IOPAD_SIZE128];
+    unsigned char k_opad[KEY_IOPAD_SIZE128];
+
+    // return hash(o_key_pad || hash(i_key_pad || message))
+
+    memset(k_ipad, 0, sizeof(k_ipad));
+    memset(k_opad, 0, sizeof(k_opad));
+    memcpy(k_ipad, key, HASH_BLKSIZE);
+    memcpy(k_opad, key, HASH_BLKSIZE);
+
+    //get i_key_pad
+    for (int i = 0; i < KEY_IOPAD_SIZE128; ++i) {
+        k_ipad[i] ^= 0x36;
+        k_opad[i] ^= 0x5c;
+    }
+
+    //get inner hash
+    sha512_init(&state);
+    sha512_update(&state, k_ipad, KEY_IOPAD_SIZE128);
+    sha512_update(&state, msg, msgsize);
+    sha512_finish(&state, out);
+
+    //get outer hash
+    sha512_init(&state);
+    sha512_update(&state, k_opad, KEY_IOPAD_SIZE128);
+    sha512_update(&state, out, HASH_OUTSIZE);
+
+    // get final output
+    sha512_finish(&state, out);
 }
 
 #ifdef _MSC_VER

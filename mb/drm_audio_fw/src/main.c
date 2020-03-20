@@ -1,4 +1,4 @@
-#include <stdint.h>
+// #include <stdint.h>
 #include <stdbool.h>
 
 #include "secrets.h"
@@ -15,6 +15,7 @@
 #include "xil_mem.h"
 #include "util.h"
 #include "xintc.h"
+#include "sha512.h"
 
 //HW global state stuff
 static XDecrypt myDecrypt;
@@ -101,10 +102,10 @@ typedef struct __attribute__((__packed__)) { //sizeof() = 1368
 #define SONGLEN_FULL ((current_song_header.nr_segments-1 * SEGMENT_SONG_SIZE)+current_song_header.last_segment_size)
 
 struct segment_trailer {
-    uint8_t id[SONGID_LEN];
-    uint32_t idx;
-    uint32_t next_segment_size;
-    uint8_t sig[HMAC_SIG_SIZE];
+    uint8_t id[SONGID_LEN]; //1
+    uint32_t idx;           //4
+    uint32_t next_segment_size; //4
+    uint8_t sig[HMAC_SIG_SIZE]; //64
     char _pad_[40]; //do not use this. for cryptographic padding purposes only.
 };
 
@@ -302,7 +303,7 @@ void gpio_entry() {
         case MIPOD_PLAY: mb_printf("startup mipod play\r\n"); res = play_song(); break;
         case MIPOD_PAUSE: mb_printf("pausing mipod\r\n"); pause_song(); break; //these are voids and handle stuff directly inside themselves.
         case MIPOD_RESUME: mb_printf("resuming the song\r\n"); resume_song(); break;
-        case MIPOD_STOP: mb_printf("stopping the song\r\n"); stop_song(); break;
+        case MIPOD_STOP: mb_printf("stopping the song\r\n"); stop_song(); return;
         case MIPOD_RESTART: mb_printf("restarting the song\r\n"); restart_song(); break;
         case MIPOD_FORWARD: mb_printf("forwarding the song\r\n"); forward_song(); break;
         case MIPOD_REWIND: mb_printf("rewinding the song\r\n"); rewind_song(); break;
@@ -400,6 +401,12 @@ int main() {
 
     mb_printf("Audio DRM Module has Booted\r\n");
 
+//    static const uint8_t mipod_key[] = "hello";
+
+//    uint8_t sig[HASH_OUTSIZE];
+
+//    hmac((uint8_t *)"hello", "hello", 5, sig);
+
     // Handle commands forever
     while(1);
 
@@ -493,19 +500,43 @@ data layout looks like:
 static bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
     //return !crypto_sign_ed25519_verify_detached((uint8_t*)data_start + sig_offset, data_start, sig_offset, mipod_pubkey);
     uint8_t sig[HASH_OUTSIZE];
-    // mb_printf("mp_sig: ");
-    // for (size_t i = 0; i < HASH_OUTSIZE; i++)
-    // {
-    //     mb_printf("%x ", current_song_header.mp_sig[i]);
-    // }
-    // printf("\r\n");
-    hmac(mipod_key, data_start, sig_offset, sig);
-    // mb_printf("hmac_mp_sig: ");
-    // for (size_t i = 0; i < HASH_OUTSIZE; i++)
-    // {
-    //     mb_printf("%x ", sig[i]);
-    // }
-    // printf("\r\n");
+//    unsigned char in[6] = {'h', 'e', 'l', 'l', 'o', 0};
+//    uint8_t key[5] = "hello";
+//    size_t size = 5;
+    memset(sig, 0, HASH_OUTSIZE);
+//    crypto_hash_sha512(sig, 5, "hello");
+
+//    mb_printf("sha512 hello: ");
+//     for (size_t i = 0; i < HASH_OUTSIZE; i++)
+//     {
+//         mb_printf("%x ", sig[i]);
+//     }
+//     mb_printf("\r\n");
+//     unsigned char in2[6] = {'h', 'e', 'l', 'l', 'o', 0};
+//     memset(sig, 0, HASH_OUTSIZE);
+    SHA512("hello", 5, sig);
+//    mb_printf("sha512 hello: ");
+//     for (size_t i = 0; i < HASH_OUTSIZE; i++)
+//     {
+//         mb_printf("%x ", sig[i]);
+//     }
+//     mb_printf("\r\n");
+
+//     hmac(key, in, size, sig);
+//     mb_printf("hmac-sha512 hello: ");
+//      for (size_t i = 0; i < HASH_OUTSIZE; i++)
+//      {
+//          mb_printf("%x ", sig[i]);
+//      }
+//      mb_printf("\r\n");
+
+     hmac(mipod_key, data_start, sig_offset, sig);
+    mb_printf("hmac_mp_sig: ");
+     for (size_t i = 0; i < HASH_OUTSIZE; i++)
+     {
+         mb_printf("%x ", sig[i]);
+     }
+     mb_printf("\r\n");
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 }
 
@@ -517,14 +548,42 @@ data layout looks like:
 ^-data_start  ^-sig_offset
 */
 static bool verify_user_blocksig(void* data_start, size_t sig_offset, uint32_t uid) {
-   uint8_t sig[HASH_OUTSIZE];
-    hmac(provisioned_users[uid].hash, data_start, sig_offset, sig);
-    // mb_printf("hmac_user_sig: ");
+    uint8_t sig[HASH_OUTSIZE];
+    // drm_header *tmp = data_start;
+    memset(sig, 0, HASH_OUTSIZE);
+    // mb_printf("sig: %p\r\n", sig);
+    // drm_header *tmp = data_start;
+    // mb_printf("uid: %d\r\n", uid);
+    // mb_printf("user_hash: ");
     // for (size_t i = 0; i < HASH_OUTSIZE; i++)
     // {
-    //     mb_printf("%x ", sig[i]);
+    //     mb_printf("%x ", provisioned_users[uid].hash[i]);
     // }
-    // printf("\r\n");
+    // mb_printf("\r\n");
+
+    // mb_printf("sig_offset: %ld\r\n", sig_offset);
+    // mb_printf("uid: %d\r\n", uid);
+    // mb_printf("data_start: %p", data_start);
+
+    hmac(provisioned_users[uid].hash, data_start, sig_offset, sig);
+
+    // mb_printf("after: %p\r\n", sig);
+
+    mb_printf("hmac_user_sig: ");
+     for (size_t i = 0; i < HASH_OUTSIZE; i++)
+     {
+         mb_printf("%x ", sig[i]);
+     }
+     mb_printf("\r\n");
+
+    // mb_printf("sig_offset: %ld\r\n", sig_offset);
+    // mb_printf("uid: %d\r\n", uid);
+    // mb_printf("data_start_owner: %p", data_start);
+
+    // int flag = memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
+
+    // mb_printf("cmp flag: %d\r\n", flag);
+
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 }
 
@@ -733,14 +792,14 @@ region_success:;
     //check to see if the owner exists
     uint32_t uid = get_uid_by_name(current_song_header.owner);
     if (uid == INVALID_UID){
-        mb_printf("Invalid user! play 30s.\r\n");
+        mb_printf("Invalid user! Play 30s.\r\n");
         return SONG_BADUSER;
     }
         
     //check the edc signature of the shared section against the owners key
-    if (!verify_user_blocksig((uint8_t*)&current_song_header, offsetof(drm_header, owner_sig), uid)) {
+    if (!verify_user_blocksig(&current_song_header, offsetof(drm_header, owner_sig), uid)) {
         clear_obj(current_song_header);
-        mb_printf("Invalid user!\r\n");
+        mb_printf("User verify faild!\r\n");
         return SONG_BADSIG;
     }
 
@@ -936,6 +995,13 @@ static bool play_song(void) {
     every so often we should poll for state changes (pause, stop, restart, etc) and change based on those
     */
     size_t offset = 0, bytes_max = 0; //the maximum number of bytes to play in the song, and the total number we have already played.
+    // mb_printf("play_song mipod_key: ");
+    // for (int i = 0; i < HASH_OUTSIZE; i++)
+    // {
+    //     mb_printf("%x ", mipod_key[i]);
+    // }
+    // printf("\r\n");
+    
     switch (load_song_header(&mipod_in->digital_data.play_data.drm)) {
     case(SONG_BADUSER):;
     case(SONG_BADREGION):mb_printf("Bad region, play 30s.\r\n"); //we can play 30s, but no more

@@ -7,6 +7,15 @@
 
 #ifndef _MSC_VER //msvc has these as builtin functions
 
+void *memset(void *s, int c, size_t n)
+{
+    unsigned char* p=s;
+    while(n--)
+        *p++ = (unsigned char)c;
+    return s;
+}
+
+/*
 void* memset(void* buf, int c, size_t n) {
 	uint8_t* b = buf;
 	while (n) {
@@ -36,7 +45,7 @@ void* memmove(void* dest, const void* src, size_t n) {
 		if (d > s) { //copy starting from the end of each array
 			--n;
 			do {
-				d[n] = s[n];
+				d[n] = s[memmove];
 				--n;
 			} while (n);
 		}
@@ -48,12 +57,6 @@ void* memmove(void* dest, const void* src, size_t n) {
 	return dest;
 }
 
-/*
-returns:
-	+ if s1>s2
-	0 if s1==s2
-	- if s1<s2
-*/
 int memcmp(const void* s1, const void* s2, size_t n) {
 	const uint8_t* m1 = s1, * m2 = s2;
 	uint8_t c1, c2;
@@ -67,6 +70,50 @@ int memcmp(const void* s1, const void* s2, size_t n) {
 		//else c2==c1, continue
 	}
 	return 0;
+}
+*/
+
+void *memcpy(void *dest, const void *src, size_t n)
+{
+    char *dp = dest;
+    const char *sp = src;
+    while (n--)
+        *dp++ = *sp++;
+    return dest;
+}
+
+
+
+void *memmove(void *dest, const void *src, size_t n)
+{
+    unsigned char *pd = dest;
+    const unsigned char *ps = src;
+    if (__np_anyptrlt(ps, pd))
+        for (pd += n, ps += n; n--;)
+            *--pd = *--ps;
+    else
+        while(n--)
+            *pd++ = *ps++;
+    return dest;
+}
+
+/*
+returns:
+	+ if s1>s2
+	0 if s1==s2
+	- if s1<s2
+*/
+
+
+int memcmp(const void* s1, const void* s2,size_t n)
+{
+    const unsigned char *p1 = s1, *p2 = s2;
+    while(n--)
+        if( *p1 != *p2 )
+            return *p1 - *p2;
+        else
+            p1++,p2++;
+    return 0;
 }
 
 #endif // !_MSC_VER

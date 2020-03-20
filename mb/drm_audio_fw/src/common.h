@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include "memops.h"
 
-//#include "quirks.h"
+#include "quirks.h"
 
 #define COMPILER_ASSERT(X) (void) sizeof(char[(X) ? 1 : -1])
 

@@ -31,6 +31,7 @@
 
 #define CIPHER_BLOCKSIZE 64 //the block size of the stream cipher being used for song encryption.
 //useage of chacha20 or aes-256 is recommended.
+#define KEY_IOPAD_SIZE128 128
 
 #define MAX_SHARED_REGIONS 32
 #define REGION_NAME_SZ 64
@@ -39,10 +40,10 @@
 
 #define SHARED_DDR_BASE (0x20000000 + 0x1CC00000) //from mitre constants.h, this may need to change
 
-#define SEGMENT_BUF_SIZE 0x1000 //4 KB, pretty pricey but w/e for now
+#define SEGMENT_BUF_SIZE 0x3e80 //4 KB, pretty pricey but w/e for now
 #define SEGMENT_SONG_SIZE (SEGMENT_BUF_SIZE - sizeof(struct segment_trailer))
 
-#define PCM_DRV_BUFFER_SIZE 16000
+#define PCM_DRV_BUFFER_SIZE 16000  // 0x3e80
 #define FIFO_CAP 4096*4
 
 // printing utility

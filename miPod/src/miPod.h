@@ -18,7 +18,7 @@
 // miPod constants
 #define USR_CMD_SZ 64
 
-// protocol constants
+// protocol constants. Defined at constants.h
 //#define MAX_REGIONS 64
 //#define REGION_NAME_SZ 64
 //#define MAX_USERS 64
@@ -112,6 +112,10 @@ struct segment_trailer {
     uint32_t next_segment_size;
     uint8_t sig[HMAC_SIG_SIZE];
     char _pad_[40]; //do not use this. for cryptographic padding purposes only.
+};
+
+struct {
+    char a[0-!(sizeof(struct segment_trailer) == 128 && CIPHER_BLOCKSIZE == 64)]; //if the segment trailer requirements fail, this will break.
 };
 
 // struct to interpret shared buffer as a drm song file
