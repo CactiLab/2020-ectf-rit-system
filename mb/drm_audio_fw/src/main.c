@@ -102,11 +102,11 @@ typedef struct __attribute__((__packed__)) { //sizeof() = 1368
 #define SONGLEN_FULL ((current_song_header.nr_segments-1 * SEGMENT_SONG_SIZE)+current_song_header.last_segment_size)
 
 struct segment_trailer {
-    uint8_t id[SONGID_LEN]; //1
+    uint8_t id[SONGID_LEN]; //16
     uint32_t idx;           //4
     uint32_t next_segment_size; //4
     uint8_t sig[HMAC_SIG_SIZE]; //64
-    char _pad_[40]; //do not use this. for cryptographic padding purposes only.
+    char _pad_[40]; //do not use this. for cryptographic padding purposes only. //40
 };
 
 struct {
@@ -344,6 +344,7 @@ int main() {
 
     init_platform();
 
+/*
     //Initialize the AES module
 
     XDecrypt myDecrypt;
@@ -367,6 +368,7 @@ int main() {
             return status;
         }
     }
+*/
 
     mb_printf("Setup our interrupt handler\r\n");
     //Setup our interrupt handler
@@ -500,6 +502,8 @@ data layout looks like:
 static bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
     //return !crypto_sign_ed25519_verify_detached((uint8_t*)data_start + sig_offset, data_start, sig_offset, mipod_pubkey);
     uint8_t sig[HASH_OUTSIZE];
+//    void *tmp = data_start;
+//    size_t offset = sig_offset;
 //    unsigned char in[6] = {'h', 'e', 'l', 'l', 'o', 0};
 //    uint8_t key[5] = "hello";
 //    size_t size = 5;
@@ -514,7 +518,7 @@ static bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
 //     mb_printf("\r\n");
 //     unsigned char in2[6] = {'h', 'e', 'l', 'l', 'o', 0};
 //     memset(sig, 0, HASH_OUTSIZE);
-    SHA512("hello", 5, sig);
+//    SHA512("hello", 5, sig);
 //    mb_printf("sha512 hello: ");
 //     for (size_t i = 0; i < HASH_OUTSIZE; i++)
 //     {
@@ -531,12 +535,12 @@ static bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
 //      mb_printf("\r\n");
 
      hmac(mipod_key, data_start, sig_offset, sig);
-    mb_printf("hmac_mp_sig: ");
-     for (size_t i = 0; i < HASH_OUTSIZE; i++)
-     {
-         mb_printf("%x ", sig[i]);
-     }
-     mb_printf("\r\n");
+//    mb_printf("hmac_mp_sig: ");
+//     for (size_t i = 0; i < HASH_OUTSIZE; i++)
+//     {
+//         mb_printf("%x ", sig[i]);
+//     }
+//     mb_printf("\r\n");
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 }
 
@@ -569,12 +573,12 @@ static bool verify_user_blocksig(void* data_start, size_t sig_offset, uint32_t u
 
     // mb_printf("after: %p\r\n", sig);
 
-    mb_printf("hmac_user_sig: ");
-     for (size_t i = 0; i < HASH_OUTSIZE; i++)
-     {
-         mb_printf("%x ", sig[i]);
-     }
-     mb_printf("\r\n");
+//    mb_printf("hmac_user_sig: ");
+//     for (size_t i = 0; i < HASH_OUTSIZE; i++)
+//     {
+//         mb_printf("%x ", sig[i]);
+//     }
+//     mb_printf("\r\n");
 
     // mb_printf("sig_offset: %ld\r\n", sig_offset);
     // mb_printf("uid: %d\r\n", uid);
@@ -599,6 +603,16 @@ static bool sign_user_block(void* data_start, size_t sig_offset) {
     return true;
 }
 
+#define swipe_bytes(a, b) {tmp = a; a = b; b = tmp}
+#define Transpose(block){
+        swipe_bytes(block + 1, block + 4)
+        swipe_bytes(block + 2, block + 8)
+        swipe_bytes(block + 3, block + 12)
+        swipe_bytes(block + 6, block + 9)
+        swipe_bytes(block + 7, block + 13)
+        swipe_bytes(block + 11, block + 14)
+}
+
 /*
 decrypts <len> bytes at <start> using the hardware-stored keys.
 returns the actual length of the decrypted data (removing padding, for example)
@@ -606,14 +620,59 @@ returns the actual length of the decrypted data (removing padding, for example)
 <start> = start of segment.
 */
 static size_t decrypt_segment_data(void* start, size_t len) {
-    len -= sizeof(struct segment_trailer);
-    XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, start, len); //we can probably make these use words
+//    len -= sizeof(struct segment_trailer);
 
-    XDecrypt_Start(&myDecrypt);
 
-    while (!XDecrypt_IsDone(&myDecrypt));
+    //Initialize the AES module
 
-    XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, start, len);
+	int status;
+    XDecrypt myDecrypt;
+    XDecrypt_Config* myDecrypt_cfg;
+
+    myDecrypt_cfg = XDecrypt_LookupConfig(XPAR_DECRYPT_0_DEVICE_ID);
+    if (!myDecrypt_cfg) {
+        mb_printf("Error loading configuration for component XDecrypt\r\n");
+        return status;
+    }
+
+    status = XDecrypt_CfgInitialize(&myDecrypt, myDecrypt_cfg);
+    if (status != XST_SUCCESS) {
+        mb_printf("Error initializing configuration for component XDecrypt\r\n");
+        return status;
+    }
+    else {
+        status = XDecrypt_Initialize(&myDecrypt, XPAR_DECRYPT_0_DEVICE_ID);
+        if (status != XST_SUCCESS) {
+            mb_printf("Error initializing component XDecrypt\r\n");
+            return status;
+        }
+    }
+
+
+	mb_printf("-- Starting AES hardware test based on FIPS-197 (Appendix B)\n");
+
+
+    int count = len/16;
+    // uint8_t *en_data[count][128] = start;
+    uint8_t *tmp;
+    
+    for (size_t i = 0; i < count; i++)
+    {
+        block_offset = i*16;
+        block_start = start + block_offset
+        XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16); //we can probably make these use words
+
+        XDecrypt_Start(&myDecrypt);
+
+        while (!XDecrypt_IsDone(&myDecrypt));
+
+        XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, block_start, 16);
+
+        // Transpose back the block
+        Transpose(block_start);
+
+    }
+
     return len;
 }
 
@@ -1030,6 +1089,7 @@ restart_playing:;
     //loop through all the segments in the file, make sure the update size is correct
     for (; i < current_song_header.nr_segments; ++i) {
         if (!load_song_segment(fseg, segsize, i)) {
+        	mb_printf("Load song segment failed.\r\n");
             unload_song_header();
             disable_interrupts(); //idk that this is strictly necessary
             return false;
