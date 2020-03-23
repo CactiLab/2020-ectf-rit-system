@@ -3,6 +3,7 @@
 Description: Hash the encryt song with mipod_sig then store back to the tail.
 Use: Once per song
 Usage:
+./sig_song_segment.py --infile protectRITdemo.drm --mipod_sig mipod_sig --outfile rit.drm
 ./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile rit.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
 output: encrypted song
 """
@@ -18,6 +19,25 @@ import random, string
 from Crypto.Cipher import AES
 import hashlib
 import hmac
+from itertools import zip_longest
+
+def Transform(string):
+    keylength = 4
+    transposed_str = bytes()
+    blocks = [string[i:i+keylength] for i in range(0, len(string)+1, keylength)]
+    transposed = [bytes(t) for t in zip_longest(*blocks, fillvalue=0)]
+    for i in range(0, 4):
+        transposed_str = transposed_str + transposed[i][0:4]
+    return transposed_str
+
+def TransSeg(segment, size):  # len should be multiple of 16
+    count = int(size/16)
+    block_size = 16
+    segment_trans = bytes()
+    blocks = [segment[i:i+block_size] for i in range(0, len(segment)+1, block_size)]
+    for i in range(0, count):
+        segment_trans = segment_trans + Transform(blocks[i])
+    return segment_trans
 
 def init_sig():
     owner_sig = ''
@@ -51,8 +71,8 @@ mp_sig = init_sig()
 owner_sig = init_sig()
 # self.song_id = str.encode("".join(random.choices(string.digits, k=16)))
 song_id = str.encode('9839899488377487')
-first_segment_size = struct.pack("=I", 0)
-nr_segments = struct.pack("=I", 0)
+first_segment_size = 0
+nr_segments = 0
 mipod_key = get_mp_key()
 owner_key = get_owner_key()
 pad = init_pad()
@@ -209,7 +229,8 @@ class EncryptSong(object):
         key_file = open("aes.key", "rb")
         key = key_file.read()
         key_file.close()
-        return key
+        print(Transform(key))
+        return Transform(key)
 
     def create_song_segment_trailer(self, en_segment, idx, next_segment_size):
 
@@ -243,7 +264,8 @@ class EncryptSong(object):
         # print(segment_sig)     
         segment_trailer = msg + segment_sig + pad
 
-        print('segment: ', len(segment_trailer) - len(segment_sig) - len(pad))
+        # print('en-segment: ', next_segment_size)
+        # print('segment: ', len(segment_trailer))
         
         return segment_trailer
 
@@ -252,6 +274,7 @@ class EncryptSong(object):
         global nr_segments
         encrypt_song_str = bytearray()
         file_name = os.path.abspath(path)
+        file_len = os.path.getsize(path)
         try:
             fileIn = open(file_name,"rb")
         except IOError as err:
@@ -260,34 +283,22 @@ class EncryptSong(object):
         wav_header = fileIn.read(44)
         # self.wav_size = (struct.unpack('I', wav_header[40:44]))[0]
         self.wav_size = (struct.unpack('I', wav_header[4:8]))[0] - 44 + 8
-        # print("wav_size: ", self.wav_size)
-        nr_segments = int(self.wav_size / 14400) + 1
-        # print('nr_segments: ', nr_segments)
-        # calculate the number of block_size (16)
-        # the encrypt data should be the multiple of 16, so we need to fill the last block to 16
-        fill_block_size = 16 - int(self.wav_size % 16) 
-        # print('fill_block_size', fill_block_size)
-        align_wav_size = self.wav_size + fill_block_size
-        # print('align_wav_size: ', align_wav_size)
-        nr_block = int(align_wav_size / 16)
-        # print('nr_block: ', nr_block)
-        # fill_block = bytearray(fill_block_size)
-        # calculate the size of segments, multiple of 16
-        block_in_each_segment = int(nr_block / (nr_segments - 1))
-        # print('block_in_each_segment: ', block_in_each_segment)
-        block_in_last_segment = int(nr_block % (nr_segments - 1))
-        # print('block_in_last_segment: ', block_in_last_segment * 16)
-        self.first_segment_size = block_in_each_segment * 16
-        last_segment_size = block_in_last_segment * 16 - fill_block_size
+        print("wav_size: ", self.wav_size)
+        p = int(self.wav_size / 14336)
+        remainder = int(self.wav_size % 14336)
+        fill_block_size = 128 - int(remainder % 128)
+        fill_block = bytearray(fill_block_size)
+
+        self.first_segment_size = 14336
         
         # self.first_segment_size = block_in_each_segment * 16
-        # print('first_segment: ', self.first_segment_size)
+        print('first_segment: ', self.first_segment_size)
         # print('the whole wav length: ', self.first_segment_size * (nr_segments - 1) + last_segment_size)
 
         # get the real last_segment
         # fill_block_size = int(nr_block % nr_segments)
         # fill_block_size = 16 - int(self.wav_size % 16) 
-        fill_block = bytearray(fill_block_size)
+        # fill_block = bytearray(fill_block_size)
      
         # print('last_segment_size: ', last_segment_size)
         # last_segment_size = self.first_segment_size - fill_block_size
@@ -298,24 +309,22 @@ class EncryptSong(object):
         # segment = fileIn.read(self.first_segment_size)
         # encrypt_segment = segment_cipher.encrypt(segment) 
         # encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, 0, self.first_segment_size)
-
-        
-        for i in range(0, nr_segments-1):
+        flag = 0
+        segment_str = fileIn.read(self.first_segment_size)
+        segment_str = TransSeg(segment_str, len(segment_str))
+        encrypt_segment = segment_cipher.encrypt(segment_str)
+        while fileIn.tell() < file_len:
             segment = fileIn.read(self.first_segment_size)
-            # segment.decode('iso-8859-1') 
+            if len(segment) < self.first_segment_size:
+                segment = segment + fill_block
+                flag = 1
+            next_size = self.first_segment_size
+            if flag == 1:
+                next_size = 0 
+            segment = TransSeg(segment, len(segment))
+            encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, next_size)
             encrypt_segment = segment_cipher.encrypt(segment)    
-            if i < nr_segments - 2:
-                trailer_next_segment = self.first_segment_size
-            else:
-                trailer_next_segment = last_segment_size
-            encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, i, self.first_segment_size)
-        
-
-        # encrypt the last segment
-        last_segment = fileIn.read() + fill_block
-        encrypt_last_segment = segment_cipher.encrypt(last_segment)
-        encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_last_segment, nr_segments, 0)
-        
+            nr_segments += 1      
 
         return encrypt_song_str
 
