@@ -603,15 +603,28 @@ static bool sign_user_block(void* data_start, size_t sig_offset) {
     return true;
 }
 
-#define swipe_bytes(a, b) {tmp = a; a = b; b = tmp}
-#define Transpose(block){
-        swipe_bytes(block + 1, block + 4)
-        swipe_bytes(block + 2, block + 8)
-        swipe_bytes(block + 3, block + 12)
-        swipe_bytes(block + 6, block + 9)
-        swipe_bytes(block + 7, block + 13)
-        swipe_bytes(block + 11, block + 14)
-}
+//#ifndef offsetof
+//#define offsetof(st, m) ((size_t)&(((st *)0)->m))
+//#endif
+#ifndef swap_bytes
+#define swap_bytes(a, b) ({\
+	uint8_t * tmp[4]; \
+	memcpy(tmp, a, 1); \
+	memcpy(a, b, 1); \
+	memcpy(b, tmp, 1); \
+	})
+#endif
+
+#ifndef Transpose
+#define Transpose(block) ({\
+        swap_bytes(block + 1, block + 4); \
+        swap_bytes(block + 2, block + 8); \
+        swap_bytes(block + 3, block + 12); \
+        swap_bytes(block + 6, block + 9); \
+        swap_bytes(block + 7, block + 13); \
+        swap_bytes(block + 11, block + 14); \
+})
+#endif
 
 /*
 decrypts <len> bytes at <start> using the hardware-stored keys.
@@ -649,17 +662,39 @@ static size_t decrypt_segment_data(void* start, size_t len) {
     }
 
 
-	mb_printf("-- Starting AES hardware test based on FIPS-197 (Appendix B)\n");
+	mb_printf("-- Starting AES hardware Decryption --\n");
 
 
     int count = len/16;
     // uint8_t *en_data[count][128] = start;
-    uint8_t *tmp;
+    uint8_t *tmp = 0;
     
     for (size_t i = 0; i < count; i++)
     {
-        block_offset = i*16;
-        block_start = start + block_offset
+        int block_offset = i*16;
+        uint8_t * block_start = start + block_offset;
+//        if (i == 0)
+//        {
+//            for (size_t l = 0; l < 16; l++)
+//            {
+//                mb_printf("ciphertext: %x %x %x %x", *(block_start + l), *(block_start + l + 1), *(block_start + l + 2), *(block_start + l + 3));
+//                l = l + 4;
+//            }
+//
+//        }
+        Transpose(block_start);
+
+//        if (i < 4)
+//        {
+//        	mb_printf("transpose");
+//            for (size_t l = 0; l < 16; l++)
+//            {
+//                mb_printf("ciphertext: %x %x %x %x", *(block_start + l), *(block_start + l + 1), *(block_start + l + 2), *(block_start + l + 3));
+//                l = l + 3;
+//            }
+//
+//        }
+
         XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16); //we can probably make these use words
 
         XDecrypt_Start(&myDecrypt);
@@ -670,6 +705,16 @@ static size_t decrypt_segment_data(void* start, size_t len) {
 
         // Transpose back the block
         Transpose(block_start);
+
+        if (i < 4)
+        {
+            for (size_t l = 0; l < 16; l++)
+            {
+                mb_printf("deciphertext: %x %x %x %x", *(block_start + l), *(block_start + l + 1), *(block_start + l + 2), *(block_start + l + 3));
+                l = l + 3;
+            }
+            
+        }
 
     }
 
@@ -1358,3 +1403,4 @@ static void rewind_song(void) {
 #ifdef _MSC_VER
 #pragma endregion 
 #endif // _MSC_VER
+

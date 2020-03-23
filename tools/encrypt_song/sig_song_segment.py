@@ -311,7 +311,7 @@ class EncryptSong(object):
         # encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, 0, self.first_segment_size)
         flag = 0
         segment_str = fileIn.read(self.first_segment_size)
-        segment_str = TransSeg(segment_str, len(segment_str))
+        # segment_str = TransSeg(segment_str, len(segment_str))
         encrypt_segment = segment_cipher.encrypt(segment_str)
         while fileIn.tell() < file_len:
             segment = fileIn.read(self.first_segment_size)
@@ -321,7 +321,7 @@ class EncryptSong(object):
             next_size = self.first_segment_size
             if flag == 1:
                 next_size = 0 
-            segment = TransSeg(segment, len(segment))
+            # segment = TransSeg(segment, len(segment))
             encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, next_size)
             encrypt_segment = segment_cipher.encrypt(segment)    
             nr_segments += 1      
@@ -417,3 +417,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+
