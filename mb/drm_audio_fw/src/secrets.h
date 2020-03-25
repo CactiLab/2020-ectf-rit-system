@@ -1,51 +1,20 @@
-//#pragma once
-//#ifndef SECRETS_H
-//#define SECRETS_H
-//
-//#include "constants.h"
-//
-//#define TOTAL_USERS 64
-//#define TOTAL_REGIONS 32
-//
-//struct user {
-//    const char name[UNAME_SIZE]; //the username. this is used to check song owners/shared withs.
-//    const uint8_t salt[SALT_SIZE]; //the salt to pass to the hash function.
-//    uint8_t hash[HASH_SIZE]; //the user's public key.
-//}; //these should be set as const in the secrets header file.
-//
-//static uint8_t mipod_key[HASH_SIZE]; //firmware hmac key. can't be const because it gets written to.
-//static const uint8_t mipod_salt[SALT_SIZE]; //firmware salt
-//static struct user provisioned_users[TOTAL_USERS]; //the users that can use the device
-//static uint32_t provisioned_regions[TOTAL_REGIONS] = { INVALID_RID }; //for now, initialize them all to be invalid. (may require 32x INVALID_RID)
-//
-//#endif // !SECRETS_H
-
-
 
 #pragma once
 #ifndef SECRETS_H
 #define SECRETS_H
 #include "constants.h"
-
 #define TOTAL_USERS 3
 #define TOTAL_REGIONS 2
-
-
-struct user {
-    const char name[UNAME_SIZE];
-    const uint8_t salt[SALT_SIZE];
-    const uint8_t hash[PKEY_SIZE];
-};
-
-static const uint8_t mipod_key[PKEY_SIZE] = {36, 183, 176, 197, 162, 2, 78, 142, 158, 92, 81, 103, 3, 172, 217, 135, 229, 254, 156, 170, 121, 213, 164, 139, 141, 236, 94, 70, 146, 122, 82, 47, 167, 188, 240, 85, 215, 240, 27, 67, 155, 74, 224, 144, 165, 239, 47, 142, 193, 94, 205, 171, 85, 186, 243, 23, 146, 58, 35, 68, 40, 238, 150, 72}; //public signing key for the firmware size 64
-static const uint8_t mipod_salt[SALT_SIZE] ={242, 211, 32, 82, 174, 224, 245, 81, 248, 33, 13, 6, 54, 141, 44, 219 }; //public slat  for the firmware size 16
-static struct user provisioned_users[TOTAL_USERS] = { {"drew",{120, 33, 100, 115, 186, 210, 143, 29, 162, 173, 149, 3, 72, 91, 145, 189},{50, 46, 218, 206, 131, 28, 219, 121, 121, 63, 46, 12, 184, 188, 11, 27, 80, 205, 94, 143, 41, 135, 218, 52, 48, 229, 248, 67, 225, 4, 2, 241, 215, 241, 104, 144, 129, 105, 237, 85, 4, 15, 93, 114, 121, 247, 17, 247, 180, 153, 204, 154, 143, 247, 224, 204, 121, 35, 140, 52, 252, 142, 54, 68}}, {"ben",{10, 211, 28, 132, 91, 196, 181, 79, 24, 42, 34, 215, 23, 164, 238, 53},{57, 28, 236, 254, 16, 58, 233, 85, 179, 66, 3, 226, 250, 136, 90, 201, 235, 41, 219, 37, 5, 84, 40, 57, 212, 225, 208, 151, 10, 198, 110, 127, 233, 121, 220, 222, 174, 107, 207, 30, 189, 160, 10, 75, 166, 161, 158, 49, 184, 207, 78, 87, 24, 235, 114, 129, 165, 136, 73, 24, 83, 104, 197, 103}}, {"misha",{11, 146, 150, 42, 161, 21, 168, 77, 0, 180, 133, 105, 243, 43, 132, 2},{206, 203, 11, 235, 15, 24, 186, 153, 174, 23, 35, 148, 59, 19, 20, 18, 62, 206, 155, 3, 22, 29, 202, 27, 50, 237, 147, 96, 249, 107, 83, 87, 40, 41, 14, 177, 94, 45, 197, 41, 132, 113, 74, 192, 49, 175, 136, 93, 82, 135, 100, 226, 186, 170, 143, 24, 29, 177, 79, 72, 66, 16, 72, 76}} };
-
 #define NUM_REGIONS 3
-
+struct user {
+    const char name[UNAME_SIZE]; 
+    const uint8_t salt[SALT_SIZE]; 
+    const uint8_t hash[PKEY_SIZE]; 
+}; 
+static const uint8_t mipod_key[PKEY_SIZE] = {131, 218, 164, 154, 141, 13, 172, 255, 38, 91, 244, 41, 213, 73, 63, 69, 143, 104, 247, 51, 4, 0, 11, 5, 137, 3, 57, 214, 243, 118, 184, 87, 130, 43, 158, 247, 54, 54, 175, 91, 64, 60, 199, 148, 111, 12, 103, 103, 188, 40, 195, 200, 154, 42, 143, 202, 252, 26, 56, 64, 55, 87, 34, 79 }; //public signing key for the firmware size 64
+static const uint8_t mipod_salt[SALT_SIZE] ={52, 25, 18, 158, 4, 54, 189, 250, 77, 199, 13, 39, 112, 61, 245, 132 }; //public slat  for the firmware size 16
+static struct user provisioned_users[TOTAL_USERS] = { {"drew",{25, 172, 202, 116, 234, 83, 199, 36, 80, 130, 71, 173, 145, 138, 63, 130},{35, 96, 202, 218, 166, 30, 62, 26, 62, 173, 28, 58, 172, 104, 197, 182, 227, 150, 49, 252, 150, 195, 81, 228, 81, 92, 160, 222, 219, 228, 196, 164, 185, 49, 20, 61, 178, 127, 48, 118, 215, 171, 123, 60, 182, 246, 238, 126, 159, 116, 212, 243, 105, 240, 170, 225, 56, 84, 97, 94, 17, 21, 150, 229}}, {"ben",{59, 151, 231, 161, 216, 148, 224, 103, 201, 246, 196, 107, 125, 69, 67, 211},{154, 179, 167, 171, 182, 18, 114, 179, 48, 182, 178, 15, 23, 247, 215, 181, 22, 227, 175, 133, 26, 25, 127, 51, 116, 108, 163, 199, 197, 49, 210, 123, 169, 51, 196, 55, 164, 21, 134, 100, 186, 18, 135, 230, 161, 121, 207, 233, 147, 198, 127, 31, 85, 64, 132, 83, 131, 76, 120, 20, 104, 184, 235, 168}}, {"misha",{216, 58, 54, 192, 78, 18, 101, 94, 30, 133, 28, 172, 221, 249, 249, 42},{21, 86, 123, 166, 37, 52, 253, 90, 9, 198, 225, 113, 199, 31, 184, 69, 186, 180, 72, 166, 127, 243, 79, 10, 226, 202, 217, 255, 83, 231, 200, 117, 133, 26, 54, 236, 227, 4, 17, 83, 228, 164, 108, 143, 155, 188, 190, 110, 151, 1, 216, 82, 130, 124, 233, 17, 83, 18, 16, 225, 156, 45, 215, 0}} };
+static uint32_t provisioned_regions[TOTAL_REGIONS] = { 0, 1 };
 const uint32_t REGION_IDS[] = { 0, 1, 2 };
-const uint32_t provisioned_regions[TOTAL_REGIONS] = { 0, 1 };
 const char *REGION_NAMES[] = { "United States", "Japan", "Australia" };
-
-
 #endif // SECRETS_H
