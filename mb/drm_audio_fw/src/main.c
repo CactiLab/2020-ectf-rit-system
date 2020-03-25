@@ -5,6 +5,7 @@
 #include "constants.h"
 #include "memops.h"
 #include "pbkdf2.h"
+#include "pbkdf2-hmac-sha512.h"
 
 #include "xdecrypt.h"
 
@@ -301,10 +302,10 @@ void gpio_entry() {
     mipod_in->status = STATE_WORKING;
     switch (mipod_in->operation) {
         case MIPOD_PLAY: mb_printf("startup mipod play\r\n"); res = play_song(); break;
-        case MIPOD_PAUSE: mb_printf("pausing mipod\r\n"); pause_song(); break; //these are voids and handle stuff directly inside themselves.
-        case MIPOD_RESUME: mb_printf("resuming the song\r\n"); resume_song(); break;
-        case MIPOD_STOP: mb_printf("stopping the song\r\n"); stop_song(); return;
-        case MIPOD_RESTART: mb_printf("restarting the song\r\n"); restart_song(); break;
+        //case MIPOD_PAUSE: mb_printf("pausing mipod\r\n"); pause_song(); break; //these are voids and handle stuff directly inside themselves.
+       // case MIPOD_RESUME: mb_printf("resuming the song\r\n"); resume_song(); break;
+       // case MIPOD_STOP: mb_printf("stopping the song\r\n"); stop_song(); return;
+       // case MIPOD_RESTART: mb_printf("restarting the song\r\n"); restart_song(); break;
         case MIPOD_FORWARD: mb_printf("forwarding the song\r\n"); forward_song(); break;
         case MIPOD_REWIND: mb_printf("rewinding the song\r\n"); rewind_song(); break;
         case MIPOD_LOGIN: mb_printf("user login\r\n"); res = login_user(); break;
@@ -603,29 +604,6 @@ static bool sign_user_block(void* data_start, size_t sig_offset) {
     return true;
 }
 
-//#ifndef offsetof
-//#define offsetof(st, m) ((size_t)&(((st *)0)->m))
-//#endif
-#ifndef swap_bytes
-#define swap_bytes(a, b) ({\
-	uint8_t * tmp[4]; \
-	memcpy(tmp, a, 1); \
-	memcpy(a, b, 1); \
-	memcpy(b, tmp, 1); \
-	})
-#endif
-
-#ifndef Transpose
-#define Transpose(block) ({\
-        swap_bytes(block + 1, block + 4); \
-        swap_bytes(block + 2, block + 8); \
-        swap_bytes(block + 3, block + 12); \
-        swap_bytes(block + 6, block + 9); \
-        swap_bytes(block + 7, block + 13); \
-        swap_bytes(block + 11, block + 14); \
-})
-#endif
-
 /*
 decrypts <len> bytes at <start> using the hardware-stored keys.
 returns the actual length of the decrypted data (removing padding, for example)
@@ -662,39 +640,17 @@ static size_t decrypt_segment_data(void* start, size_t len) {
     }
 
 
-	mb_printf("-- Starting AES hardware Decryption --\n");
+	mb_printf("-- Starting AES hardware test based on FIPS-197 (Appendix B)\n");
 
 
     int count = len/16;
     // uint8_t *en_data[count][128] = start;
-    uint8_t *tmp = 0;
+    uint8_t *tmp;
     
     for (size_t i = 0; i < count; i++)
     {
         int block_offset = i*16;
-        uint8_t * block_start = start + block_offset;
-//        if (i == 0)
-//        {
-//            for (size_t l = 0; l < 16; l++)
-//            {
-//                mb_printf("ciphertext: %x %x %x %x", *(block_start + l), *(block_start + l + 1), *(block_start + l + 2), *(block_start + l + 3));
-//                l = l + 4;
-//            }
-//
-//        }
-        Transpose(block_start);
-
-//        if (i < 4)
-//        {
-//        	mb_printf("transpose");
-//            for (size_t l = 0; l < 16; l++)
-//            {
-//                mb_printf("ciphertext: %x %x %x %x", *(block_start + l), *(block_start + l + 1), *(block_start + l + 2), *(block_start + l + 3));
-//                l = l + 3;
-//            }
-//
-//        }
-
+        int block_start = start + block_offset;
         XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16); //we can probably make these use words
 
         XDecrypt_Start(&myDecrypt);
@@ -704,17 +660,7 @@ static size_t decrypt_segment_data(void* start, size_t len) {
         XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, block_start, 16);
 
         // Transpose back the block
-        Transpose(block_start);
 
-        if (i < 4)
-        {
-            for (size_t l = 0; l < 16; l++)
-            {
-                mb_printf("deciphertext: %x %x %x %x", *(block_start + l), *(block_start + l + 1), *(block_start + l + 2), *(block_start + l + 3));
-                l = l + 3;
-            }
-            
-        }
 
     }
 
@@ -729,7 +675,7 @@ static size_t decrypt_segment_data(void* start, size_t len) {
 #pragma region user_ops
 #endif // _MSC_VER
 
-static uint32_t get_uid_by_name(const char username[UNAME_SIZE]) {
+uint32_t get_uid_by_name(const char username[UNAME_SIZE]) {
     
     char c = username[0];
     size_t i = 0;
@@ -760,21 +706,11 @@ uid is the user to do so on. IDK if uid is actually something that we will use.
 returns true/false for if the user is OK or not.
 */
 bool gen_check_user_secret(uint32_t uid) {
+
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
-    // argon2_hash(pin_buffer);
-    // mb_printf("strlen(pin_buffer): %d", strlen(pin_buffer));
-    // for (size_t i = 0; i < strlen(pin_buffer); i++)
-    // {
-    //     mb_printf(" %d ", pin_buffer[i]);
-    // }
-    pbkdf2(pin_buffer, sizeof(pin_buffer), provisioned_users[uid].salt, kb); //note: this doesnt use the full output in keypair generation
+    pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,pin_buffer,sizeof(pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt),500);
+   // pbkdf2(pin_buffer, sizeof(pin_buffer), provisioned_users[uid].salt, kb); //note: this doesnt use the full output in keypair generation
     clear_buffer(pin_buffer);
-    //note: we aren't clearing the key buffer because anyone reading memory can get the provisioned_users hash
-    // mb_printf("\r\n");
-    // for (size_t i = 0; i < sizeof(kb); i++)
-    // {
-    //     mb_printf(" %d ", kb[i]);
-    // }
     
     return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
 }
@@ -793,8 +729,10 @@ returns true for success
 returns false for failure
 */
 bool login_user(void) {
+    mb_printf("Logined data : %d",mipod_in->login_data.logged_in);
     if(mipod_in->login_data.logged_in){
         mb_printf("Already logged in. Please logout first.\r\n");
+        return true;
     }
     else{
         char tmpnam[UNAME_SIZE];
@@ -827,9 +765,10 @@ bool login_user(void) {
             return true; //the user has logged in successfully.
         }
     }
-    memset((void*)mipod_in->login_data.logged_in, 0, sizeof(uint32_t));
+    /*memset((void*)mipod_in->login_data.logged_in, 0, sizeof(uint32_t));
     memset((void*)mipod_in->login_data.name, 0, UNAME_SIZE);
     memset((void*)mipod_in->login_data.pin, 0, PIN_SIZE);
+    return false;*/
 }
 
 /*
@@ -838,6 +777,9 @@ logs out the current user and clears their current key.
 bool logout_user(void) {
     if (current_uid != INVALID_UID) {
         current_uid = INVALID_UID;
+        mipod_in->login_data.logged_in = 0;
+        memset((void*)mipod_in->login_data.name, 0, UNAME_SIZE);
+        memset((void*)mipod_in->login_data.pin, 0, PIN_SIZE);
         return true;
     }
     else {
@@ -945,7 +887,7 @@ segidx is the index in the file of the loaded segment (ie the 5th segment would 
 the function currently assumes a static buffer somewhere (either defined in the file or a reserved hardware block)
 rather than one being passed in.
 */
-static bool load_song_segment(void* arm_start, size_t segsize, uint32_t segidx) {
+bool load_song_segment(void* arm_start, size_t segsize, uint32_t segidx) {
     if (segsize > SEGMENT_BUF_SIZE) { //this should be proveable at compile-time
         //idk? die i guess?
         mb_printf("The segment size is invalid.\r\n");
@@ -998,7 +940,7 @@ memory segments contain a multiple of that data size
 /*
 plays the currently loaded song segment in bram.
 */
-static void play_segment_bytes(void * start, size_t size) {
+void play_segment_bytes(void * start, size_t size) {
     u32 cp_xfil_cnt, * fifo_fill;
     fifo_fill = (u32*)XPAR_FIFO_COUNT_AXI_GPIO_0_BASEADDR;
 #if SEGMENT_BUF_SIZE > PCM_DRV_BUFFER_SIZE
@@ -1090,7 +1032,7 @@ static bool seek_rev(size_t * curr) {
 
 #endif
 
-static bool play_song(void) {
+ bool play_song(void) {
     /*
     load the header
     assuming that passes, load each segment,
@@ -1339,7 +1281,7 @@ fail:;
 //#define wait_for_pause() do {} while(music_op!=PLAYER_PAUSE) //wait for the music operation to be pause
 //#define wait_for_play_pause() do {} while(music_op>PLAYER_PAUSE) //wait for the music operation to be play or pause
 //^^works because play=0 and pause=1
-
+/*
 static void pause_song(void) { //only one that doesn't rely on play_song to set state because nothing bad can happen if play_song never sees the operation
     if (music_op == PLAYER_PLAY) { //can we pause during other times?
         music_op = PLAYER_PAUSE;
@@ -1348,30 +1290,24 @@ static void pause_song(void) { //only one that doesn't rely on play_song to set 
     else {
         mipod_in->status = STATE_FAILED;
     }
-}
-
-static void resume_song(void) { //success: state=>playing
+}*/
+void resume_song(void) { //success: state=>playing
     if (music_op == PLAYER_PAUSE) //only one we are allowed to resume on.
         music_op = PLAYER_RESUME;
     else
         set_status_failed();
 }
 
-static void stop_song(void) {
-    if (music_op <= PLAYER_PAUSE) //works because play=0 and pause=1
-        music_op = PLAYER_STOP;
-    else
-        set_status_failed();
-}
 
-static void restart_song(void) {
+
+ void restart_song(void) {
     if (music_op <= PLAYER_PAUSE) //works because play=0 and pause=1
         music_op = PLAYER_RESTART;
     else 
         set_status_failed();
 }
 
-static void forward_song(void) {
+ void forward_song(void) {
 #if 0
     uint8_t op;
     //wait for play or pause, then make sure to save that while noting the next state should be xyz
@@ -1386,7 +1322,8 @@ static void forward_song(void) {
 #endif
 }
 
-static void rewind_song(void) {
+
+void rewind_song(void) {
 #if 0
     uint8_t op;
     while ((op = music_op) > PLAYER_PAUSE) continue;
@@ -1403,4 +1340,3 @@ static void rewind_song(void) {
 #ifdef _MSC_VER
 #pragma endregion 
 #endif // _MSC_VER
-

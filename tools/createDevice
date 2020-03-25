@@ -73,7 +73,7 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
         slatMap[u] = perSalt
         #argon2Hash = ph.hash(u+user_secrets[u]['pin'])
         #print (len(argon2Hash))
-        hashValue = hashlib.pbkdf2_hmac('sha512', str.encode(user_secrets[u]['pin']), perSalt, 4096)
+        hashValue = hashlib.pbkdf2_hmac('sha512', str.encode(user_secrets[u]['pin']), perSalt, 500)
         #print(len(hashValue))
         #hashValue = PBKDF2(ph.hash(u+user_secrets[u]['pin']), perSalt).read(64) # 256-bit hash
         hasMap[u] = hashValue
@@ -109,9 +109,8 @@ static const uint8_t mipod_key[PKEY_SIZE] = {{{", ".join([  str(keyByte)  for ke
 static const uint8_t mipod_salt[SALT_SIZE] ={{{", ".join([  str(saltByte) for saltByte in mipodSlat])} }}; //public slat  for the firmware size 16
 static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{'+ ", ".join([ str(uSaltByte)  for uSaltByte in slatMap[u]])+'}'+','+ '{'+", ".join([ str(uHashByte)  for uHashByte in hasMap[u]])+'}'+'}' for u in user_names])} }};
 static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join(rids)} }};
-
 const uint32_t REGION_IDS[] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
-const char *REGION_NAMES[] = { "United States", "Japan", "Australia" };
+const char *REGION_NAMES[] = {{ "United States", "Japan", "Australia" }};
 #endif // SECRETS_H
 ''')
 
