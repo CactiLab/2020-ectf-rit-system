@@ -351,7 +351,7 @@ class EncryptSong(object):
         # print(fileIn.tell())
         # write file segment
         encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, 0)
-        nr_segments += 1 
+#         nr_segments += 1 
         fileIn.close()  
 
         return encrypt_song_str
