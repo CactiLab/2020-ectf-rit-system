@@ -336,7 +336,7 @@ class EncryptSong(object):
             if len(segment) < self.first_segment_size:
                 segment = segment + fill_block
                 # flag = 1
-            next_size = self.first_segment_size
+            next_size = len(segment)
             # if flag == 1:
             #     next_size = 0 
             segment = TransSeg(segment, len(segment))
@@ -386,7 +386,8 @@ class EncryptSong(object):
             if len(segment) < self.first_segment_size:
                 segment = segment + fill_block
                 # flag = 1
-            next_size = self.first_segment_size
+            next_size = len(segment)
+            print("next_size: ", next_size)
             # if flag == 1:
             #     next_size = 0 
             # segment = TransSeg(segment, len(segment))
