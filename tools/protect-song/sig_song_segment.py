@@ -3,7 +3,6 @@
 Description: Hash the encryt song with mipod_sig then store back to the tail.
 Use: Once per song
 Usage:
-./sig_song_segment.py --infile protectRITdemo.drm --mipod_sig mipod_sig --outfile rit.drm
 ./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile rit.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
 output: encrypted song
 """
