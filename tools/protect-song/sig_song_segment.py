@@ -289,13 +289,14 @@ class EncryptSong(object):
         encrypt_song_str = bytearray()
         file_name = os.path.abspath(path)
         file_len = os.path.getsize(path)
+        print("file_len: ", file_len)
         try:
             fileIn = open(file_name,"rb")
         except IOError as err:
             print("Could not open song file %s" % file_name)
             return
         wav_header = fileIn.read(44)
-        # self.wav_size = (struct.unpack('I', wav_header[40:44]))[0]
+        # self.wav_size = (struct.unpack('I', wav_header[40:44]))[0]  
         self.wav_size = (struct.unpack('I', wav_header[4:8]))[0] - 44 + 8
         print("wav_size: ", self.wav_size)
         p = int(self.wav_size / 14336)
@@ -325,20 +326,29 @@ class EncryptSong(object):
         # encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, 0, self.first_segment_size)
         flag = 0
         segment_str = fileIn.read(self.first_segment_size)
+        print("segment size: ", len(segment_str))
         segment_str = TransSeg(segment_str, len(segment_str))
         encrypt_segment = segment_cipher.encrypt(segment_str)
+        # with open(file_name, "rb") as f:
+        #     while True:
+        #         dd = f.read()
         while fileIn.tell() < file_len:
+            # print(fileIn.tell())
             segment = fileIn.read(self.first_segment_size)
             if len(segment) < self.first_segment_size:
                 segment = segment + fill_block
-                flag = 1
+                # flag = 1
             next_size = self.first_segment_size
-            if flag == 1:
-                next_size = 0 
+            # if flag == 1:
+            #     next_size = 0 
             segment = TransSeg(segment, len(segment))
             encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, next_size)
             encrypt_segment = segment_cipher.encrypt(segment)    
-            nr_segments += 1      
+            nr_segments += 1    
+        # print(fileIn.tell())
+        # write file segment
+        encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, 0)
+        fileIn.close()  
 
         return encrypt_song_str
 

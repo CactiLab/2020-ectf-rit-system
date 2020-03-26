@@ -385,6 +385,9 @@ class EncryptSong(object):
             plain_song_str = plain_song_str + self.create_song_segment_trailer(cipher_segment, nr_segments, next_size) 
             cipher_segment = segment
             nr_segments += 1      
+        # write the last segment
+        fileIn.close()
+        plain_song_str = plain_song_str + self.create_song_segment_trailer(cipher_segment, nr_segments, next_size)
 
         return plain_song_str
 
