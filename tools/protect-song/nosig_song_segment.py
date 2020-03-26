@@ -264,7 +264,10 @@ class EncryptSong(object):
         global mipod_key, song_id, pad
         # segment_trailer = bytearray()
         self.idx = struct.pack('=I', idx)
-        self.next_segment_size = struct.pack('=I', next_segment_size + 128)
+        if next_segment_size == 0:
+            self.next_segment_size = struct.pack('=I', 0)
+        else:
+            self.next_segment_size = struct.pack('=I', next_segment_size + 128)
         msg = en_segment + song_id + self.idx + self.next_segment_size
         fileOut = open("segment-en", "wb")
         fileOut.write(msg)
@@ -329,17 +332,23 @@ class EncryptSong(object):
         # segment = TransSeg(segment, len(segment))
         encrypt_segment = segment_cipher.encrypt(segment_str)
         while fileIn.tell() < file_len:
+            # print(fileIn.tell())
             segment = fileIn.read(self.first_segment_size)
             if len(segment) < self.first_segment_size:
                 segment = segment + fill_block
-                flag = 1
+                # flag = 1
             next_size = self.first_segment_size
-            if flag == 1:
-                next_size = 0 
-            # segment = TransSeg(segment, len(segment))
+            # if flag == 1:
+            #     next_size = 0 
+            segment = TransSeg(segment, len(segment))
             encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, next_size)
             encrypt_segment = segment_cipher.encrypt(segment)    
-            nr_segments += 1   
+            nr_segments += 1    
+        # print(fileIn.tell())
+        # write file segment
+        encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, 0)
+        nr_segments += 1 
+        fileIn.close()  
 
         return encrypt_song_str
 
@@ -377,17 +386,18 @@ class EncryptSong(object):
             segment = fileIn.read(self.first_segment_size)
             if len(segment) < self.first_segment_size:
                 segment = segment + fill_block
-                flag = 1
+                # flag = 1
             next_size = self.first_segment_size
-            if flag == 1:
-                next_size = 0 
+            # if flag == 1:
+            #     next_size = 0 
             # segment = TransSeg(segment, len(segment))
             plain_song_str = plain_song_str + self.create_song_segment_trailer(cipher_segment, nr_segments, next_size) 
             cipher_segment = segment
             nr_segments += 1      
         # write the last segment
         fileIn.close()
-        plain_song_str = plain_song_str + self.create_song_segment_trailer(cipher_segment, nr_segments, next_size)
+        plain_song_str = plain_song_str + self.create_song_segment_trailer(cipher_segment, nr_segments, 0)
+        nr_segments += 1
 
         return plain_song_str
 

@@ -264,7 +264,10 @@ class EncryptSong(object):
         global mipod_key, song_id, pad
         # segment_trailer = bytearray()
         self.idx = struct.pack('=I', idx)
-        self.next_segment_size = struct.pack('=I', next_segment_size + 128)
+        if next_segment_size == 0:
+            self.next_segment_size = struct.pack('=I', 0)
+        else:
+            self.next_segment_size = struct.pack('=I', next_segment_size + 128)
         msg = en_segment + song_id + self.idx + self.next_segment_size
         fileOut = open("segment-en", "wb")
         fileOut.write(msg)
@@ -348,6 +351,7 @@ class EncryptSong(object):
         # print(fileIn.tell())
         # write file segment
         encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, 0)
+        nr_segments += 1 
         fileIn.close()  
 
         return encrypt_song_str
