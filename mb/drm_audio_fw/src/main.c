@@ -103,11 +103,11 @@ typedef struct {
     bool shared_current_song;
     bool own_current_song;
     bool working;
-    uint8_t music_op;
     uint8_t pin_buffer[PIN_SIZE];   // logged on pin
-    uint32_t current_uid;
+    int32_t current_uid;
     uint32_t current_operation;
-    drm_header current_song_header;           // current song metadata
+    drm_header current_song_header; // current song metadata
+    uint8_t music_op;
 } internal_state;
 
 #define SONGLEN_30S (current_song_header.len_250ms * 4 * 30)
@@ -729,11 +729,10 @@ uid is the user to do so on. IDK if uid is actually something that we will use.
 returns true/false for if the user is OK or not.
 */
 bool gen_check_user_secret(uint32_t uid) {
-
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
     pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,mb_state.pin_buffer,sizeof(mb_state.pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt),500);
    // pbkdf2(pin_buffer, sizeof(pin_buffer), provisioned_users[uid].salt, kb); //note: this doesnt use the full output in keypair generation
-    clear_buffer(mb_state.pin_buffer);
+   // clear_buffer(mb_state.pin_buffer);
     
     return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
 }
@@ -758,11 +757,11 @@ bool login_user(void) {
         return true;
     }
     else{
-        char tmpnam[UNAME_SIZE];
-        copytolocal(tmpnam, mipod_in->login_data.name, UNAME_SIZE);
-        mb_printf("uname is: %s\r\n", tmpnam);
-        uint32_t user = get_uid_by_name(tmpnam);
-        mb_printf("uid is: %d\r\n", user);
+    	char tmpnam[UNAME_SIZE];
+		memcpy(tmpnam, mipod_in->login_data.name, UNAME_SIZE);
+		mb_printf("uname is: %s\r\n", tmpnam);
+		uint32_t user = get_uid_by_name(tmpnam);
+		mb_printf("uid is: %d\r\n", user);
          
         //TODO: use a stack-based pin_buffer
 
@@ -771,8 +770,7 @@ bool login_user(void) {
             mb_printf("Invalid user!\r\n");
             return false;
         }
-        uint32_t tt = sizeof(mb_state.pin_buffer);
-        copytolocal(mb_state.pin_buffer, (void*)mipod_in->login_data.pin, sizeof(mb_state.pin_buffer)); //no TOCTOU here
+        memcpy(mb_state.pin_buffer, (void*)mipod_in->login_data.pin, sizeof(mb_state.pin_buffer)); //no TOCTOU here
         // mb_printf("sizeof(pin_buffer): %d", strlen(pin_buffer));
 
         //if everything is fine, go ahead and log them in.
@@ -784,6 +782,7 @@ bool login_user(void) {
         	mb_state.logged_in_user = true;
             //mipod_in->login_data.uid = user;
             //mipod_in->login_data.logged_in = 1;
+        	//mb_printf("uname is: %s\r\n", mb_st);
             mb_printf("User %s logged in.\r\n", tmpnam);
             mb_state.current_uid = user; //ensure everything is good.
             return true; //the user has logged in successfully.
@@ -838,7 +837,7 @@ BADUSER => the song is neither owned by or shared with the current user, but app
 BADSIG => the song is invalid and may be discarded (current_song_header and other state will be cleared).
 */
 int32_t load_song_header(drm_header * arm_drm) {
-    copytolocal(&mb_state.current_song_header, arm_drm, sizeof(mb_state.current_song_header));
+    memcpy(&mb_state.current_song_header, arm_drm, sizeof(mb_state.current_song_header));
 
     //check the edc signature of the mipod application
     if (!verify_mp_blocksig(&mb_state.current_song_header, offsetof(drm_header, mp_sig))) {
@@ -920,7 +919,7 @@ bool load_song_segment(void* arm_start, size_t segsize, uint32_t segidx) {
     }
 
     //load the segment
-    copytolocal(segment_buffer, arm_start, segsize);
+    memcpy(segment_buffer, arm_start, segsize);
     size_t sdata_size = segsize - sizeof(struct segment_trailer);
     struct segment_trailer* trailer = (struct segment_trailer*) ((uint8_t*)segment_buffer + sdata_size);
 
@@ -1171,13 +1170,13 @@ unload:;
 bool startup_query(void) {
     // mb_printf("Starting queried player regions and users\r\n");  
     for (int i = 0; i < TOTAL_REGIONS; i++){
-        copyfromlocal((char *)q_region_lookup(mipod_in->query_data, i), REGION_NAMES[provisioned_regions[i]], UNAME_SIZE);
+        memcpy((char *)q_region_lookup(mipod_in->query_data, i), REGION_NAMES[provisioned_regions[i]], UNAME_SIZE);
         // mipod_in->query_data.rids[i] = provisioned_regions[i];
     } 
     // copyfromlocal(mipod_in->query_data.rids, provisioned_regions, sizeof(provisioned_regions));
     
     for (size_t j = 0; j < TOTAL_USERS; j++) {
-        copyfromlocal((char *)q_user_lookup(mipod_in->query_data, j), provisioned_users[j].name, UNAME_SIZE);
+        memcpy((char *)q_user_lookup(mipod_in->query_data, j), provisioned_users[j].name, UNAME_SIZE);
         // char *user_tmp = provisioned_users[j].name;
         // mb_printf("users_list: %s", q_user_lookup(mipod_in->query_data, i));
     }
@@ -1194,7 +1193,7 @@ bool query_song(void) {
         // char index = mipod_in->digital_data.play_data.drm.regions[i];
         // if( i > 0 && strcmp(index, 0))
         //     i = NUM_REGIONS;
-    	copytolocal(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(mb_state.current_song_header));
+    	memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(mb_state.current_song_header));
         rid_to_region_name(mb_state.current_song_header.regions[i], &name, false);
         strncpy((char *)q_song_region_lookup(mipod_in->query_data, i), name, UNAME_SIZE);
         // mb_printf("regions: %s", q_song_region_lookup(mipod_in->query_data, i));
@@ -1242,7 +1241,7 @@ bool digitize_song(void) {
         size_t raw = decrypt_segment_data(segment_buffer, segsize - sizeof(struct segment_trailer));
         //this math assumes that everything is properly setup within the song, so, yknow, don't be stupid... 
         segsize = ((struct segment_trailer*)((uint8_t*)segment_buffer + segsize - sizeof(struct segment_trailer)))->next_segment_size;
-        copyfromlocal(arm_decrypted, segment_buffer, raw);
+        memcpy(arm_decrypted, segment_buffer, raw);
         decrypted_mem += raw;
         arm_decrypted += raw;
     }
@@ -1266,7 +1265,7 @@ this seems to be in accordance with the spec, but I am not 100% sure.
 bool share_song(void) {
     char target[UNAME_SIZE];
 
-    copytolocal(target, mipod_in->share_data.target_name, UNAME_SIZE);
+    memcpy(target, mipod_in->share_data.target_name, UNAME_SIZE);
     mb_printf("in Song sharing \r\n");
     bool rcode = false;
 
@@ -1292,7 +1291,7 @@ shared_space_ok:;
 
     //sign it with the owner's key and send it back to the caller
     sign_user_block(&mb_state.current_song_header, offsetof(drm_header, owner_sig));
-    copyfromlocal(&mipod_in->share_data.drm, &mb_state.current_song_header, sizeof(mb_state.current_song_header));
+    memcpy(&mipod_in->share_data.drm, &mb_state.current_song_header, sizeof(mb_state.current_song_header));
 
     //nothing else to do, so we are fine
     rcode = true;
