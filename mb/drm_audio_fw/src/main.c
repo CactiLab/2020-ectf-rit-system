@@ -98,6 +98,18 @@ typedef struct __attribute__((__packed__)) { //sizeof() = 1368
     uint8_t owner_sig[HMAC_SIG_SIZE]; //a signature (using the owner's private key) for all preceeding data. resets whenever new user is shared with.
 } drm_header;
 
+typedef struct {
+    bool logged_in_user; // whether or not a user is logged on
+    bool shared_current_song;
+    bool own_current_song;
+    bool working;
+    uint8_t music_op;
+    uint8_t pin_buffer[PIN_SIZE];   // logged on pin
+    uint32_t current_uid;
+    uint32_t current_operation;
+    drm_header current_song_header;           // current song metadata
+} internal_state;
+
 #define SONGLEN_30S (current_song_header.len_250ms * 4 * 30)
 #define SONGLEN_5S (current_song_header.len_250ms * 4 * 5)
 #define SONGLEN_FULL ((current_song_header.nr_segments-1 * SEGMENT_SONG_SIZE)+current_song_header.last_segment_size)
@@ -173,8 +185,8 @@ typedef volatile struct __attribute__((__packed__)) {
 
 //the following should ALL be in fpga-only memory. idk what the specifics of the load process are (ie is our .data in dram or soc?)
 
-static uint8_t pin_buffer[PIN_SIZE]; //used for the current pin being tested.
-static uint32_t current_uid = INVALID_UID;
+//static uint8_t pin_buffer[PIN_SIZE]; //used for the current pin being tested.
+//static uint32_t current_uid = INVALID_UID;
 
 static drm_header current_song_header;
 volatile mipod_buffer *mipod_in = (mipod_buffer*)SHARED_DDR_BASE;  //this ends up as a constant address
@@ -198,11 +210,19 @@ enum PLAY_OPS {
     PLAYER_NONE
 };
 
-static bool own_current_song = false;
-static bool shared_current_song = false;
-bool logged_in_user = false;
-static volatile bool working = false; //use this in the interrupt handler to avoid preemption race conditions (alone with interrupt en/dis)
-static volatile uint8_t music_op = PLAYER_NONE; //the current operation the music player should perform (if it is in-use)
+internal_state mb_state;
+void initialize_mb_State () {
+	mb_state.current_uid = INVALID_UID;
+	mb_state.logged_in_user = false;
+	mb_state.shared_current_song = false;
+	mb_state.own_current_song = false;
+	mb_state.working = false;
+	mb_state.music_op = PLAYER_NONE;
+}
+//static bool own_current_song = false;
+//static bool shared_current_song = false;
+//static volatile bool working = false; //use this in the interrupt handler to avoid preemption race conditions (alone with interrupt en/dis)
+//static volatile uint8_t music_op = PLAYER_NONE; //the current operation the music player should perform (if it is in-use)
 #define start_working() working=true
 #define stop_working() working=false
 
@@ -245,7 +265,7 @@ DOES NOT mean that the command isn't malicious or invalid, just that it isn't be
 static bool is_command_ok(uint32_t c) {
     switch (c) {
     case(MIPOD_PLAY): //there can't be a song currently playing (don't have to login though I don't think)
-        return music_op == PLAYER_NONE;
+        return mb_state.music_op == PLAYER_NONE;
     case(MIPOD_PAUSE):
     case(MIPOD_RESUME):
     case(MIPOD_STOP):
@@ -254,16 +274,16 @@ static bool is_command_ok(uint32_t c) {
     case(MIPOD_FORWARD):
 #endif
     case(MIPOD_REWIND): //these can't run unless a song is playing or paused.
-        return music_op <= PLAYER_PAUSE;
+        return mb_state.music_op <= PLAYER_PAUSE;
     case(MIPOD_LOGIN): //there can't be anyone logged in already.
-        return current_uid == INVALID_UID;
+        return mb_state.current_uid == INVALID_UID;
     case(MIPOD_LOGOUT): //there must be a user logged in and they can't be playing a song
     case(MIPOD_QUERY): //this is run @ application startup, there isn't really a good way to check for validity, but there shouldn't be anyone logged in or playing music, so it holds.
-        return (current_uid != INVALID_UID && music_op == PLAYER_NONE);
+        return (mb_state.current_uid != INVALID_UID && mb_state.music_op == PLAYER_NONE);
     case(MIPOD_DIGITAL): //can't do it while we are playing a song.
-        return music_op == PLAYER_NONE;
+        return mb_state.music_op == PLAYER_NONE;
     case(MIPOD_SHARE): //must be logged-in and not playing music.
-        return (current_uid != INVALID_UID && music_op == PLAYER_NONE);
+        return (mb_state.current_uid != INVALID_UID && mb_state.music_op == PLAYER_NONE);
     default: return false;
     }
 }
@@ -301,18 +321,20 @@ void gpio_entry() {
     // mb_printf("operation id is: %d \r\n", mipod_in->operation);
     bool res = true;
     mipod_in->status = STATE_WORKING;
-    switch (mipod_in->operation) {
+    mb_state.current_operation = mipod_in->operation;
+    //copytolocal(mb_state.current_operation, &mipod_in->operation, sizeof(mb_state.current_operation));
+    switch (mb_state.current_operation) {
         case MIPOD_PLAY: mb_printf("startup mipod play\r\n"); res = play_song(); break;
-        //case MIPOD_PAUSE: mb_printf("pausing mipod\r\n"); pause_song(); break; //these are voids and handle stuff directly inside themselves.
-       // case MIPOD_RESUME: mb_printf("resuming the song\r\n"); resume_song(); break;
-       // case MIPOD_STOP: mb_printf("stopping the song\r\n"); stop_song(); return;
-       // case MIPOD_RESTART: mb_printf("restarting the song\r\n"); restart_song(); break;
+        case MIPOD_PAUSE: mb_printf("pausing mipod\r\n"); pause_song(); break; //these are voids and handle stuff directly inside themselves.
+        case MIPOD_RESUME: mb_printf("resuming the song\r\n"); resume_song(); break;
+        case MIPOD_STOP: mb_printf("stopping the song\r\n"); stop_song(); return;
+        case MIPOD_RESTART: mb_printf("restarting the song\r\n"); restart_song(); break;
         case MIPOD_FORWARD: mb_printf("forwarding the song\r\n"); forward_song(); break;
         case MIPOD_REWIND: mb_printf("rewinding the song\r\n"); rewind_song(); break;
         case MIPOD_LOGIN: mb_printf("user login\r\n"); res = login_user(); break;
         case MIPOD_LOGOUT: mb_printf("user logout\r\n"); res = logout_user(); break;
         case MIPOD_QUERY: 
-            // mb_printf("startup mipod query\r\n");
+            mb_printf("startup mipod query\r\n");
             res = startup_query(); 
             break;
         case MIPOD_QUERY_SONG:
@@ -397,7 +419,7 @@ int main() {
         mb_printf("DMA configuration ERROR\r\n");
         return XST_FAILURE;
     }
-
+    initialize_mb_State();
     mipod_in->operation = MIPOD_STOP;
 
     // clear mipod_buffer channel
@@ -589,7 +611,6 @@ static bool verify_user_blocksig(void* data_start, size_t sig_offset, uint32_t u
     // int flag = memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 
     // mb_printf("cmp flag: %d\r\n", flag);
-    uint32_t temp = (uint8_t*)data_start + sig_offset;
 
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 }
@@ -602,7 +623,7 @@ data layout looks like:
 ^-data_start  ^-sig_offset
 */
 static bool sign_user_block(void* data_start, size_t sig_offset) {
-    hmac(provisioned_users[current_uid].hash, data_start, sig_offset, (uint8_t*)data_start + sig_offset);
+    hmac(provisioned_users[mb_state.current_uid].hash, data_start, sig_offset, (uint8_t*)data_start + sig_offset);
     return true;
 }
 
@@ -710,9 +731,9 @@ returns true/false for if the user is OK or not.
 bool gen_check_user_secret(uint32_t uid) {
 
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
-    pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,pin_buffer,sizeof(pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt),500);
+    pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,mb_state.pin_buffer,sizeof(mb_state.pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt),500);
    // pbkdf2(pin_buffer, sizeof(pin_buffer), provisioned_users[uid].salt, kb); //note: this doesnt use the full output in keypair generation
-    clear_buffer(pin_buffer);
+    clear_buffer(mb_state.pin_buffer);
     
     return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
 }
@@ -732,7 +753,7 @@ returns false for failure
 */
 bool login_user(void) {
     //mb_printf("Logined data : %d",mipod_in->login_data.logged_in);
-    if(logged_in_user){
+    if(mb_state.logged_in_user){
         mb_printf("Already logged in. Please logout first.\r\n");
         return true;
     }
@@ -746,12 +767,12 @@ bool login_user(void) {
         //TODO: use a stack-based pin_buffer
 
         //ensure there is not a user currently logged in and the user actually exists
-        if (current_uid == INVALID_UID && user == INVALID_UID){
+        if (mb_state.current_uid == INVALID_UID && user == INVALID_UID){
             mb_printf("Invalid user!\r\n");
             return false;
         }
-
-        copytolocal(pin_buffer, mipod_in->login_data.pin, PIN_SIZE); //no TOCTOU here
+        uint32_t tt = sizeof(mb_state.pin_buffer);
+        copytolocal(mb_state.pin_buffer, (void*)mipod_in->login_data.pin, sizeof(mb_state.pin_buffer)); //no TOCTOU here
         // mb_printf("sizeof(pin_buffer): %d", strlen(pin_buffer));
 
         //if everything is fine, go ahead and log them in.
@@ -760,11 +781,11 @@ bool login_user(void) {
             return false;
         }
         else {
-        	logged_in_user = true;
-            mipod_in->login_data.uid = user;
+        	mb_state.logged_in_user = true;
+            //mipod_in->login_data.uid = user;
             //mipod_in->login_data.logged_in = 1;
             mb_printf("User %s logged in.\r\n", tmpnam);
-            current_uid = user; //ensure everything is good.
+            mb_state.current_uid = user; //ensure everything is good.
             return true; //the user has logged in successfully.
         }
     }
@@ -778,10 +799,10 @@ bool login_user(void) {
 logs out the current user and clears their current key.
 */
 bool logout_user(void) {
-    if (current_uid != INVALID_UID) {
-        current_uid = INVALID_UID;
+    if (mb_state.current_uid != INVALID_UID) {
+        mb_state.current_uid = INVALID_UID;
         //mipod_in->login_data.logged_in = 0;
-        logged_in_user = false;
+        mb_state.logged_in_user = false;
         memset((void*)mipod_in->login_data.name, 0, UNAME_SIZE);
         memset((void*)mipod_in->login_data.pin, 0, PIN_SIZE);
         return true;
@@ -817,20 +838,20 @@ BADUSER => the song is neither owned by or shared with the current user, but app
 BADSIG => the song is invalid and may be discarded (current_song_header and other state will be cleared).
 */
 int32_t load_song_header(drm_header * arm_drm) {
-    copytolocal(&current_song_header, arm_drm, sizeof(current_song_header));
+    copytolocal(&mb_state.current_song_header, arm_drm, sizeof(mb_state.current_song_header));
 
     //check the edc signature of the mipod application
-    if (!verify_mp_blocksig(&current_song_header, offsetof(drm_header, mp_sig))) {
+    if (!verify_mp_blocksig(&mb_state.current_song_header, offsetof(drm_header, mp_sig))) {
         //if its a bad signature, we don't want to play ANY of it, so make sure that we clear it as being loaded.
         mb_printf("Invalid song!\r\n");
-        clear_obj(current_song_header);
+        clear_obj(mb_state.current_song_header);
         TAMPER();
         return SONG_BADSIG;
     }
 
     //check each region in the song to see if it is a valid region that we can play.
     for (size_t i = 0; i < MAX_SHARED_REGIONS; ++i) {
-        uint32_t _rid = current_song_header.regions[i];
+        uint32_t _rid = mb_state.current_song_header.regions[i];
         if (valid_region(_rid))
             goto region_success;
         if (_rid == INVALID_RID)
@@ -840,33 +861,33 @@ int32_t load_song_header(drm_header * arm_drm) {
 region_success:;
 
     //check to see if the owner exists
-    uint32_t uid = get_uid_by_name(current_song_header.owner);
+    uint32_t uid = get_uid_by_name(mb_state.current_song_header.owner);
     if (uid == INVALID_UID){
         mb_printf("Invalid user! Play 30s.\r\n");
         return SONG_BADUSER;
     }
         
     //check the edc signature of the shared section against the owners key
-    if (!verify_user_blocksig(&current_song_header, offsetof(drm_header, owner_sig), uid)) {
-        clear_obj(current_song_header);
+    if (!verify_user_blocksig(&mb_state.current_song_header, offsetof(drm_header, owner_sig), uid)) {
+        clear_obj(mb_state.current_song_header);
         mb_printf("User verify faild!\r\n");
         return SONG_BADSIG;
     }
 
     //check to see if we own the current song
    // current_uid = 2;   //the login_user haven't finished, so set the owner id
-    if (uid == current_uid) {
-        own_current_song = true;
+    if (uid == mb_state.current_uid) {
+        mb_state.own_current_song = true;
         mb_printf("You are the owner of the song, now starting to play the full song.\r\n");
         return SONG_OWNER;
     }
 
     //check to see if we have the song shared with us
     for (size_t i = 0; i < MAX_SHARED_USERS; ++i) {
-        uid = get_uid_by_name(current_song_header.shared_users[i]);
+        uid = get_uid_by_name(mb_state.current_song_header.shared_users[i]);
         if (uid == INVALID_UID)
             break;
-        if (uid == current_uid){
+        if (uid == mb_state.current_uid){
             mb_printf("You are shared withe the song, now starting to play the full song.\r\n");
             return SONG_SHARED;
         }        
@@ -880,9 +901,9 @@ region_success:;
 unloads the current song drm header, clears the song owners
 */
 void unload_song_header(void) {
-    clear_obj(current_song_header);
-    own_current_song = false;
-    shared_current_song = false;
+    clear_obj(mb_state.current_song_header);
+    mb_state.own_current_song = false;
+    mb_state.shared_current_song = false;
 }
 
 /*
@@ -904,7 +925,7 @@ bool load_song_segment(void* arm_start, size_t segsize, uint32_t segidx) {
     struct segment_trailer* trailer = (struct segment_trailer*) ((uint8_t*)segment_buffer + sdata_size);
 
     //if there is an index mismatch or the segment does not belong to the current song, somebody is being naughty
-    if (trailer->idx != segidx || memcmp(current_song_header.song_id, trailer->id, SONGID_LEN)) {
+    if (trailer->idx != segidx || memcmp(mb_state.current_song_header.song_id, trailer->id, SONGID_LEN)) {
         //memzero?
         return false;
     }
@@ -1036,104 +1057,108 @@ static bool seek_rev(size_t * curr) {
 
 #endif
 
- bool play_song(void) {
-    /*
-    load the header
-    assuming that passes, load each segment,
-    then decrypt and play that segment inside bram.
-    unload the song.
-    every so often we should poll for state changes (pause, stop, restart, etc) and change based on those
-    */
-    size_t offset = 0, bytes_max = 0; //the maximum number of bytes to play in the song, and the total number we have already played.
-    // mb_printf("play_song mipod_key: ");
-    // for (int i = 0; i < HASH_OUTSIZE; i++)
-    // {
-    //     mb_printf("%x ", mipod_key[i]);
-    // }
-    // printf("\r\n");
-    
-    switch (load_song_header(&mipod_in->digital_data.play_data.drm)) {
-    case(SONG_BADUSER):;
-    case(SONG_BADREGION):mb_printf("Bad region, play 30s.\r\n"); //we can play 30s, but no more
-        bytes_max = SONGLEN_30S;
-        mipod_in->status = STATE_PLAYING;
-        break;
-    case(SONG_BADSIG):;
-        unload_song_header();
-        mipod_in->status = STATE_FAILED;
-        return false;
-    case(SONG_OWNER): ;
-    case(SONG_SHARED): ; //we can play the full song
-        mipod_in->status = STATE_PLAYING;
-        break;
+bool play_song(void) {
+   /*
+   load the header
+   assuming that passes, load each segment,
+   then decrypt and play that segment inside bram.
+   unload the song.
+   every so often we should poll for state changes (pause, stop, restart, etc) and change based on those
+   */
+   size_t offset = 0, bytes_max = 0; //the maximum number of bytes to play in the song, and the total number we have already played.
+   // mb_printf("play_song mipod_key: ");
+   // for (int i = 0; i < HASH_OUTSIZE; i++)
+   // {
+   //     mb_printf("%x ", mipod_key[i]);
+   // }
+   // printf("\r\n");
+ //  mb_state.current_song_header = mipod_in->digital_data.play_data.drm;
+  // copytolocal(mb_state.current_song_header,mipod_in->digital_data.play_data.drm, sizeof(mb_state.current_song_header));
+   switch (load_song_header(&mipod_in->digital_data.play_data.drm)) {
+ //  switch (load_song_header(&mb_state.current_song_header)) {
+   case(SONG_BADUSER):;
+   case(SONG_BADREGION):mb_printf("Bad region, play 30s.\r\n"); //we can play 30s, but no more
+       bytes_max = SONGLEN_30S;
+       mipod_in->status = STATE_PLAYING;
+       break;
+   case(SONG_BADSIG):;
+       unload_song_header();
+       mipod_in->status = STATE_FAILED;
+       return false;
+   case(SONG_OWNER): ;
+   case(SONG_SHARED): ; //we can play the full song
+       mipod_in->status = STATE_PLAYING;
+       break;
 #ifdef __GNUC__
-    default:__builtin_unreachable();
+   default:__builtin_unreachable();
 #endif
-    }
-    // mipod_in->status = STATE_PLAYING; //no racing here
-    enable_interrupts();
+   }
+   // mipod_in->status = STATE_PLAYING; //no racing here
+   enable_interrupts();
 restart_playing:;
-    mipod_in->status = STATE_PLAYING;
-    uint8_t* fseg = &(mipod_in->digital_data.play_data.filedata[0]); //a pointer to the start of the segment to load within the shared memory section
-    size_t i = 0;
-    size_t segsize = current_song_header.first_segment_size;
-    //loop through all the segments in the file, make sure the update size is correct
-    for (; i < current_song_header.nr_segments; ++i) {
-        if (!load_song_segment(fseg, segsize, i)) {
-        	mb_printf("Load song segment failed.\r\n");
-            unload_song_header();
-            disable_interrupts(); //idk that this is strictly necessary
-            return false;
-        }
-        //prepare to play next segment
-        size_t raw = decrypt_segment_data(segment_buffer, segsize - sizeof(struct segment_trailer));
-        //for each interval (250 ms right now) in bytes, play the audio and check for state changes.
-        if (bytes_max && offset >= bytes_max) { //make sure we arent playing too much audio
-            goto unload;
-        }
-        offset += raw;
-        //update our position in the loaded song
-        fseg += segsize;
-        //get next segment size
-        segsize = ((struct segment_trailer*) & (segment_buffer[raw]))->next_segment_size;
-        play_segment_bytes(segment_buffer, raw);
-        //these *should* be interrupt-safe.
-    repoll_music_op:
-        switch (music_op) {
-        case(PLAYER_PLAY):break; //this is the default, continue playing the song
-        case(PLAYER_PAUSE): //stop playing, wait for <!play, !pause> (possibly block on interrupt, but idk if that works with gpio)
-            //block_for_interrupt() <- seems racy.
-            goto repoll_music_op; // <- seems bad for battery, but w/e
-        case(PLAYER_RESUME): //continue playing
-            music_op = PLAYER_PLAY;
-            mipod_in->status = STATE_PLAYING; //notify caller the resume operation has succeeded.
-            break;
-        case(PLAYER_STOP): //we are done playing the song, exit on out of here
-            //mipod_in->status = STATE_SUCCESS; <- happens on return
-            goto unload;
-        case(PLAYER_RESTART): //reset the song state to the beginning and then start playing again
-            music_op = PLAYER_PLAY;
-            offset = 0;
-            //played = 0; <- set as part of for loop
-            goto restart_playing; //sets state to playing
+   mipod_in->status = STATE_PLAYING;
+   uint8_t* fseg = &(mipod_in->digital_data.play_data.filedata[0]); //a pointer to the start of the segment to load within the shared memory section
+   size_t i = 0;
+   size_t segsize = mb_state.current_song_header.first_segment_size;
+   //loop through all the segments in the file, make sure the update size is correct
+   for (; i < mb_state.current_song_header.nr_segments; ++i) {
+       if (!load_song_segment(fseg, segsize, i)) {
+       	mb_printf("Load song segment failed.\r\n");
+           unload_song_header();
+           disable_interrupts(); //idk that this is strictly necessary
+           return false;
+       }
+       //prepare to play next segment
+       size_t raw = decrypt_segment_data(segment_buffer, segsize - sizeof(struct segment_trailer));
+       //for each interval (250 ms right now) in bytes, play the audio and check for state changes.
+       if (bytes_max && offset >= bytes_max) { //make sure we arent playing too much audio
+           goto unload;
+       }
+       offset += raw;
+       //update our position in the loaded song
+       fseg += segsize;
+       //get next segment size
+       segsize = ((struct segment_trailer*) & (segment_buffer[raw]))->next_segment_size;
+       play_segment_bytes(segment_buffer, raw);
+       //these *should* be interrupt-safe.
+   repoll_music_op:
+       switch (mb_state.music_op) {
+       case(PLAYER_PLAY):break; //this is the default, continue playing the song
+       case(PLAYER_PAUSE): //stop playing, wait for <!play, !pause> (possibly block on interrupt, but idk if that works with gpio)
+           //block_for_interrupt() <- seems racy.
+           goto repoll_music_op; // <- seems bad for battery, but w/e
+       case(PLAYER_RESUME): //continue playing
+           mb_state.music_op = PLAYER_PLAY;
+           mipod_in->status = STATE_PLAYING; //notify caller the resume operation has succeeded.
+           break;
+       case(PLAYER_STOP): //we are done playing the song, exit on out of here
+           //mipod_in->status = STATE_SUCCESS; <- happens on return
+           goto unload;
+       case(PLAYER_RESTART): //reset the song state to the beginning and then start playing again
+           mb_state.music_op = PLAYER_PLAY;
+           offset = 0;
+           //played = 0; <- set as part of for loop
+           goto restart_playing; //sets state to playing
 #if 0
-        case(PLAYER_FORWARD):break; //do some math, set offset/etc to +5s, skip there (maybe loading some more segments)
-        case(PLAYER_REWIND):break; //do some math, set offset/etc to -5s, skip there (maybe reloading some segments)
-        case(PLAYER_FORWARD_PAUSE):break; //do the math, then set state to pause
-        case(PLAYER_REWIND_PAUSE):break; //do the math, then set state to pause
+       case(PLAYER_FORWARD):break; //do some math, set offset/etc to +5s, skip there (maybe loading some more segments)
+       case(PLAYER_REWIND):break; //do some math, set offset/etc to -5s, skip there (maybe reloading some segments)
+       case(PLAYER_FORWARD_PAUSE):break; //do the math, then set state to pause
+       case(PLAYER_REWIND_PAUSE):break; //do the math, then set state to pause
 #endif
 #ifdef __GNUC__
-        default:__builtin_unreachable();
+       default:__builtin_unreachable();
 #endif
-        }
-    }
+       }
+   }
 
 unload:;
-    disable_interrupts();
-    music_op = PLAYER_NONE;
-    unload_song_header();
-    return true;
+   disable_interrupts();
+   mb_state.music_op = PLAYER_NONE;
+   unload_song_header();
+   return true;
 }
+
+
 
 #ifdef _MSC_VER
 #pragma endregion
@@ -1169,7 +1194,8 @@ bool query_song(void) {
         // char index = mipod_in->digital_data.play_data.drm.regions[i];
         // if( i > 0 && strcmp(index, 0))
         //     i = NUM_REGIONS;
-        rid_to_region_name(mipod_in->digital_data.play_data.drm.regions[i], &name, false);
+    	copytolocal(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(mb_state.current_song_header));
+        rid_to_region_name(mb_state.current_song_header.regions[i], &name, false);
         strncpy((char *)q_song_region_lookup(mipod_in->query_data, i), name, UNAME_SIZE);
         // mb_printf("regions: %s", q_song_region_lookup(mipod_in->query_data, i));
     } 
@@ -1202,11 +1228,11 @@ bool digitize_song(void) {
     uint8_t* fseg = &(mipod_in->digital_data.play_data.filedata[0]); //a pointer to the start of the segment to load within the shared memory section
     uint8_t* arm_decrypted = fseg; //a pointer to the next byte in the shared memory to write decrypted file to
     size_t decrypted_mem = 0;
-    size_t segsize = current_song_header.first_segment_size;
+    size_t segsize = mb_state.current_song_header.first_segment_size;
 
     //load and decrypt all the segments
     size_t i = 0;
-    for (; i < current_song_header.nr_segments; ++i, fseg+=segsize) {
+    for (; i < mb_state.current_song_header.nr_segments; ++i, fseg+=segsize) {
         if (!load_song_segment(fseg, segsize, i)) {
             unload_song_header();
             memzero(mipod_in->digital_data.play_data.filedata, decrypted_mem); //more of an annoyance than actually secure, but oh well
@@ -1224,6 +1250,7 @@ bool digitize_song(void) {
     return true;
 }
 
+
 #ifdef _MSC_VER
 #pragma endregion
 #endif // _MSC_VER
@@ -1238,21 +1265,21 @@ this seems to be in accordance with the spec, but I am not 100% sure.
 */
 bool share_song(void) {
     char target[UNAME_SIZE];
-    
+
     copytolocal(target, mipod_in->share_data.target_name, UNAME_SIZE);
     mb_printf("in Song sharing \r\n");
     bool rcode = false;
 
     //make sure it is a valid song that we own
-    int32_t res = load_song_header(&mipod_in->share_data.drm);
-    if (res != SONG_OWNER)
-        goto fail;
+   // int32_t res = load_song_header(&mipod_in->share_data.drm);
+  //  if (res != SONG_OWNER)
+    //    goto fail;
 
     //make sure the song has space for another user.
     size_t open = 0;
     uint32_t targetuid = INVALID_UID;
     for (; open < MAX_SHARED_USERS; ++open) {
-        if ((targetuid = get_uid_by_name(current_song_header.shared_users[open])) == INVALID_UID)
+        if ((targetuid = get_uid_by_name(mb_state.current_song_header.shared_users[open])) == INVALID_UID)
             //if the first byte is 0 then there is no user and we are good.
             goto shared_space_ok;
     }
@@ -1261,11 +1288,11 @@ bool share_song(void) {
 shared_space_ok:;
 
     //add the target to the shared users table
-    memcpy(current_song_header.shared_users[open], target, UNAME_SIZE);
+    memcpy(mb_state.current_song_header.shared_users[open], target, UNAME_SIZE);
 
     //sign it with the owner's key and send it back to the caller
-    sign_user_block(&current_song_header, offsetof(drm_header, owner_sig));
-    copyfromlocal(&mipod_in->share_data.drm, &current_song_header, sizeof(current_song_header));
+    sign_user_block(&mb_state.current_song_header, offsetof(drm_header, owner_sig));
+    copyfromlocal(&mipod_in->share_data.drm, &mb_state.current_song_header, sizeof(mb_state.current_song_header));
 
     //nothing else to do, so we are fine
     rcode = true;
@@ -1287,19 +1314,22 @@ fail:;
 //#define wait_for_pause() do {} while(music_op!=PLAYER_PAUSE) //wait for the music operation to be pause
 //#define wait_for_play_pause() do {} while(music_op>PLAYER_PAUSE) //wait for the music operation to be play or pause
 //^^works because play=0 and pause=1
-/*
-static void pause_song(void) { //only one that doesn't rely on play_song to set state because nothing bad can happen if play_song never sees the operation
-    if (music_op == PLAYER_PLAY) { //can we pause during other times?
-        music_op = PLAYER_PAUSE;
+
+void stop_song(void) {
+
+}
+void pause_song(void) { //only one that doesn't rely on play_song to set state because nothing bad can happen if play_song never sees the operation
+    if (mb_state.music_op == PLAYER_PLAY) { //can we pause during other times?
+    	mb_state.music_op = PLAYER_PAUSE;
         mipod_in->status = STATE_SUCCESS;
     }
     else {
         mipod_in->status = STATE_FAILED;
     }
-}*/
+}
 void resume_song(void) { //success: state=>playing
-    if (music_op == PLAYER_PAUSE) //only one we are allowed to resume on.
-        music_op = PLAYER_RESUME;
+    if (mb_state.music_op == PLAYER_PAUSE) //only one we are allowed to resume on.
+        mb_state.music_op = PLAYER_RESUME;
     else
         set_status_failed();
 }
@@ -1307,8 +1337,8 @@ void resume_song(void) { //success: state=>playing
 
 
  void restart_song(void) {
-    if (music_op <= PLAYER_PAUSE) //works because play=0 and pause=1
-        music_op = PLAYER_RESTART;
+    if (mb_state.music_op <= PLAYER_PAUSE) //works because play=0 and pause=1
+        mb_state.music_op = PLAYER_RESTART;
     else 
         set_status_failed();
 }
