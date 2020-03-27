@@ -200,6 +200,7 @@ enum PLAY_OPS {
 
 static bool own_current_song = false;
 static bool shared_current_song = false;
+bool logged_in_user = false;
 static volatile bool working = false; //use this in the interrupt handler to avoid preemption race conditions (alone with interrupt en/dis)
 static volatile uint8_t music_op = PLAYER_NONE; //the current operation the music player should perform (if it is in-use)
 #define start_working() working=true
@@ -588,6 +589,7 @@ static bool verify_user_blocksig(void* data_start, size_t sig_offset, uint32_t u
     // int flag = memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 
     // mb_printf("cmp flag: %d\r\n", flag);
+    uint32_t temp = (uint8_t*)data_start + sig_offset;
 
     return !memcmp(sig, (uint8_t*)data_start + sig_offset, HASH_OUTSIZE);
 }
@@ -729,8 +731,8 @@ returns true for success
 returns false for failure
 */
 bool login_user(void) {
-    mb_printf("Logined data : %d",mipod_in->login_data.logged_in);
-    if(mipod_in->login_data.logged_in){
+    //mb_printf("Logined data : %d",mipod_in->login_data.logged_in);
+    if(logged_in_user){
         mb_printf("Already logged in. Please logout first.\r\n");
         return true;
     }
@@ -758,8 +760,9 @@ bool login_user(void) {
             return false;
         }
         else {
+        	logged_in_user = true;
             mipod_in->login_data.uid = user;
-            mipod_in->login_data.logged_in = 1;
+            //mipod_in->login_data.logged_in = 1;
             mb_printf("User %s logged in.\r\n", tmpnam);
             current_uid = user; //ensure everything is good.
             return true; //the user has logged in successfully.
@@ -777,7 +780,8 @@ logs out the current user and clears their current key.
 bool logout_user(void) {
     if (current_uid != INVALID_UID) {
         current_uid = INVALID_UID;
-        mipod_in->login_data.logged_in = 0;
+        //mipod_in->login_data.logged_in = 0;
+        logged_in_user = false;
         memset((void*)mipod_in->login_data.name, 0, UNAME_SIZE);
         memset((void*)mipod_in->login_data.pin, 0, PIN_SIZE);
         return true;
@@ -850,7 +854,7 @@ region_success:;
     }
 
     //check to see if we own the current song
-    current_uid = 2;   //the login_user haven't finished, so set the owner id
+   // current_uid = 2;   //the login_user haven't finished, so set the owner id
     if (uid == current_uid) {
         own_current_song = true;
         mb_printf("You are the owner of the song, now starting to play the full song.\r\n");
@@ -1234,7 +1238,9 @@ this seems to be in accordance with the spec, but I am not 100% sure.
 */
 bool share_song(void) {
     char target[UNAME_SIZE];
+    
     copytolocal(target, mipod_in->share_data.target_name, UNAME_SIZE);
+    mb_printf("in Song sharing \r\n");
     bool rcode = false;
 
     //make sure it is a valid song that we own
