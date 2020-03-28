@@ -633,6 +633,25 @@ returns the actual length of the decrypted data (removing padding, for example)
 <len> = size of segment, including trailer and padding.
 <start> = start of segment.
 */
+
+#define swap_bytes(a, b) {\
+	uint8_t tmp; \
+	tmp = *((uint8_t *)a); \
+	*((uint8_t *)a) = *((uint8_t *)b); \
+	*((uint8_t *)b) = tmp; \
+}
+
+//#ifndef Transpose
+#define Transpose(block) {\
+        swap_bytes(block + 1, block + 4); \
+        swap_bytes(block + 2, block + 8); \
+        swap_bytes(block + 3, block + 12); \
+        swap_bytes(block + 6, block + 9); \
+        swap_bytes(block + 7, block + 13); \
+        swap_bytes(block + 11, block + 14); \
+}
+//#endif
+
 static size_t decrypt_segment_data(void* start, size_t len) {
 //    len -= sizeof(struct segment_trailer);
 
@@ -674,6 +693,7 @@ static size_t decrypt_segment_data(void* start, size_t len) {
     {
         int block_offset = i*16;
         int block_start = start + block_offset;
+        Transpose(block_start);
         XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16); //we can probably make these use words
 
         XDecrypt_Start(&myDecrypt);
