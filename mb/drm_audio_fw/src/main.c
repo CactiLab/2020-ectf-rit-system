@@ -266,7 +266,7 @@ DOES NOT mean that the command isn't malicious or invalid, just that it isn't be
 static bool is_command_ok(uint32_t c) {
     switch (c) {
     case(MIPOD_PLAY): //there can't be a song currently playing (don't have to login though I don't think)
-        return music_op == PLAYER_NONE;
+        return mb_state.music_op == PLAYER_NONE;
     case(MIPOD_PAUSE):
     case(MIPOD_RESUME):
     case(MIPOD_STOP):
@@ -275,16 +275,16 @@ static bool is_command_ok(uint32_t c) {
     case(MIPOD_FORWARD):
 #endif
     case(MIPOD_REWIND): //these can't run unless a song is playing or paused.
-        return music_op <= PLAYER_PAUSE;
+        return mb_state.music_op <= PLAYER_PAUSE;
     case(MIPOD_LOGIN): //there can't be anyone logged in already.
-        return current_uid == INVALID_UID;
+        return mb_state.current_uid == INVALID_UID;
     case(MIPOD_LOGOUT): //there must be a user logged in and they can't be playing a song
     case(MIPOD_QUERY): //this is run @ application startup, there isn't really a good way to check for validity, but there shouldn't be anyone logged in or playing music, so it holds.
-        return (current_uid != INVALID_UID && music_op == PLAYER_NONE);
+        return (mb_state.current_uid != INVALID_UID && mb_state.music_op == PLAYER_NONE);
     case(MIPOD_DIGITAL): //can't do it while we are playing a song.
-        return music_op == PLAYER_NONE;
+        return mb_state.music_op == PLAYER_NONE;
     case(MIPOD_SHARE): //must be logged-in and not playing music.
-        return (current_uid != INVALID_UID && music_op == PLAYER_NONE);
+        return (mb_state.current_uid != INVALID_UID && mb_state.music_op == PLAYER_NONE);
     default: return false;
     }
 }
@@ -623,7 +623,7 @@ data layout looks like:
 ^-data_start  ^-sig_offset
 */
 static bool sign_user_block(void* data_start, size_t sig_offset) {
-    hmac(provisioned_users[current_uid].hash, data_start, sig_offset, (uint8_t*)data_start + sig_offset);
+    hmac(provisioned_users[mb_state.current_uid].hash, data_start, sig_offset, (uint8_t*)data_start + sig_offset);
     return true;
 }
 
@@ -781,8 +781,8 @@ returns true/false for if the user is OK or not.
 */
 bool gen_check_user_secret(uint32_t uid) {
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
-    pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,pin_buffer,sizeof(pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt),500);
-   // pbkdf2(pin_buffer, sizeof(pin_buffer), provisioned_users[uid].salt, kb); //note: this doesnt use the full output in keypair generation
+    pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,mb_state.pin_buffer,sizeof(mb_state.pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt),500);
+   // pbkdf2(mb_state.pin_buffer, sizeof(mb_state.pin_buffer), provisioned_users[uid].salt, kb); //note: this doesnt use the full output in keypair generation
     // clear_buffer(mb_state.pin_buffer);
 
     return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
@@ -925,7 +925,7 @@ region_success:;
     }
 
     //check to see if we own the current song
-    current_uid = 2;   //the login_user haven't finished, so set the owner id
+    // mb_state.current_uid = 2;   //the login_user haven't finished, so set the owner id
     if (uid == mb_state.current_uid) {
         mb_state.own_current_song = true;
         mb_printf("You are the owner of the song, now starting to play the full song.\r\n");
@@ -952,8 +952,8 @@ unloads the current song drm header, clears the song owners
 */
 void unload_song_header(void) {
     clear_obj(current_song_header);
-    own_current_song = false;
-    shared_current_song = false;
+    mb_state.own_current_song = false;
+    mb_state.shared_current_song = false;
 }
 
 /*
@@ -1203,20 +1203,20 @@ restart_playing:;
         play_segment_bytes(segment_buffer, idx, raw);
         //these *should* be interrupt-safe.
     repoll_music_op:
-        switch (music_op) {
+        switch (mb_state.music_op) {
         case(PLAYER_PLAY):break; //this is the default, continue playing the song
         case(PLAYER_PAUSE): //stop playing, wait for <!play, !pause> (possibly block on interrupt, but idk if that works with gpio)
             //block_for_interrupt() <- seems racy.
             goto repoll_music_op; // <- seems bad for battery, but w/e
         case(PLAYER_RESUME): //continue playing
-            music_op = PLAYER_PLAY;
+            mb_state.music_op = PLAYER_PLAY;
             mipod_in->status = STATE_PLAYING; //notify caller the resume operation has succeeded.
             break;
         case(PLAYER_STOP): //we are done playing the song, exit on out of here
             //mipod_in->status = STATE_SUCCESS; <- happens on return
             goto unload;
         case(PLAYER_RESTART): //reset the song state to the beginning and then start playing again
-            music_op = PLAYER_PLAY;
+            mb_state.music_op = PLAYER_PLAY;
             offset = 0;
             //played = 0; <- set as part of for loop
             goto restart_playing; //sets state to playing
@@ -1234,7 +1234,7 @@ restart_playing:;
 
 unload:;
     disable_interrupts();
-    music_op = PLAYER_NONE;
+    mb_state.music_op = PLAYER_NONE;
     unload_song_header();
     return true;
 }
@@ -1301,10 +1301,19 @@ bool digitize_song(void) {
     */
 
     //need to add one condition to check if the song belongs to the login user(owner or shared)
-	if (load_song_header(&mipod_in->digital_data.play_data.drm) == SONG_BADSIG) {
+
+    if (mb_state.current_uid){
+        if (load_song_header(&mipod_in->digital_data.play_data.drm) == SONG_BADSIG) {
         mb_debug("Invalid user.\r\n");
         return false;
+        }
     }
+    else{
+        mb_debug("Please login first.\r\n");
+        return false;
+    }
+
+
     uint8_t* fseg = &(mipod_in->digital_data.play_data.filedata[0]); //a pointer to the start of the segment to load within the shared memory section
     uint8_t* arm_decrypted = fseg; //a pointer to the next byte in the shared memory to write decrypted file to
     size_t decrypted_mem = 0;
@@ -1391,9 +1400,9 @@ fail:;
 #pragma region playing_music_ops
 #endif // _MSC_VER
 
-//#define wait_for_play() do {} while(music_op!=PLAYER_PLAY) //wait for the music operation to be play (normal)
-//#define wait_for_pause() do {} while(music_op!=PLAYER_PAUSE) //wait for the music operation to be pause
-//#define wait_for_play_pause() do {} while(music_op>PLAYER_PAUSE) //wait for the music operation to be play or pause
+//#define wait_for_play() do {} while(mb_state.music_op!=PLAYER_PLAY) //wait for the music operation to be play (normal)
+//#define wait_for_pause() do {} while(mb_state.music_op!=PLAYER_PAUSE) //wait for the music operation to be pause
+//#define wait_for_play_pause() do {} while(mb_state.music_op>PLAYER_PAUSE) //wait for the music operation to be play or pause
 //^^works because play=0 and pause=1
 
 void pause_song(void) { //only one that doesn't rely on play_song to set state because nothing bad can happen if play_song never sees the operation
