@@ -40,7 +40,8 @@
 
 #define SHARED_DDR_BASE (0x20000000 + 0x1CC00000) //from mitre constants.h, this may need to change
 
-#define SEGMENT_BUF_SIZE 0x3e80 //4 KB, pretty pricey but w/e for now
+#define SEGMENT_BUF_SIZE 32000 //14336+128 KB, pretty pricey but w/e for now
+#define CHUNK_SZ 16000
 #define SEGMENT_SONG_SIZE (SEGMENT_BUF_SIZE - sizeof(struct segment_trailer))
 
 #define PCM_DRV_BUFFER_SIZE 16000  // 0x3e80
@@ -49,6 +50,8 @@
 // printing utility
 #define MB_PROMPT "\r\nMB> "
 #define mb_printf(...) xil_printf(MB_PROMPT __VA_ARGS__)
+#define MB_PROMPT_DEBUG "\r\nMB_DEBUG> "
+#define mb_debug(...) xil_printf(MB_PROMPT_DEBUG __VA_ARGS__)
 
 // LED colors and controller
 struct color {

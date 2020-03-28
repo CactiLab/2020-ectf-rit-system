@@ -28,7 +28,7 @@
 
 #define SHARED_DDR_BASE (0x20000000 + 0x1CC00000) //from mitre constants.h, this may need to change
 
-#define SEGMENT_BUF_SIZE 0x10000 //64 KB
+#define SEGMENT_BUF_SIZE 32000 //14400+128 KB
 #define SEGMENT_SONG_SIZE (SEGMENT_BUF_SIZE - sizeof(struct segment_trailer))
 
 #endif // !CONSTANTS_H
