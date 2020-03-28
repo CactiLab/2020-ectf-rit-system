@@ -4,17 +4,51 @@
 #include "memops.h"
 #include "pbkdf2.h"
 #include "sha512.h"
+#include "sha1.h"
 #include "constants.h"
 
 #define KDF_USE_HMAC // <- use with length-extension vulnerable hashes (md-based like SHA2)
+
 
 #ifdef _MSC_VER
 #pragma region hmac
 #endif
 
-void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t out[HASH_OUTSIZE]) {
+void hmac_sha1(uint8_t key[HASH_BLKSIZE],
+    const uint8_t* msg, size_t msgsize, uint8_t out[SHA1_DIGEST_SIZE]) {
+    SHA_State context;
+    unsigned char k_ipad[KEY_IOPAD_SIZE];    /* inner padding - key XORd with ipad  */
+    unsigned char k_opad[KEY_IOPAD_SIZE];    /* outer padding - key XORd with opad */
+    int i;
+
+    /* start out by storing key in pads */
+    memset(k_ipad, 0, sizeof(k_ipad));
+    memset(k_opad, 0, sizeof(k_opad));
+    memcpy(k_ipad, key, HASH_BLKSIZE);
+    memcpy(k_opad, key, HASH_BLKSIZE);
+
+    /* XOR key with ipad and opad values */
+    for (i = 0; i < KEY_IOPAD_SIZE; i++) {
+        k_ipad[i] ^= 0x36;
+        k_opad[i] ^= 0x5c;
+    }
+
+    // perform inner SHA
+    SHA_Init(&context);                    /* init context for 1st pass */
+    SHA_Bytes(&context, k_ipad, KEY_IOPAD_SIZE);      /* start with inner pad */
+    SHA_Bytes(&context, msg, msgsize); /* then text of datagram */
+    SHA_Final(&context, out);             /* finish up 1st pass */
+
+    // perform outer SHA
+    SHA_Init(&context);                   /* init context for 2nd pass */
+    SHA_Bytes(&context, k_opad, KEY_IOPAD_SIZE);     /* start with outer pad */
+    SHA_Bytes(&context, out, SHA1_DIGEST_SIZE);     /* then results of 1st hash */
+    SHA_Final(&context, out);          /* finish up 2nd pass */
+}
+
+void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t out[SHA512_DIGEST_SIZE]) {
 	SHA512_State state;
-    // uint8_t tmp[HASH_OUTSIZE];
+    // uint8_t tmp[SHA512_DIGEST_SIZE];
     unsigned char k_ipad[KEY_IOPAD_SIZE128];
     unsigned char k_opad[KEY_IOPAD_SIZE128];
 
@@ -40,7 +74,7 @@ void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t
     //get outer hash
     SHA512_Init(&state);
     SHA512_Bytes(&state, k_opad, KEY_IOPAD_SIZE128);
-    SHA512_Bytes(&state, out, HASH_OUTSIZE);
+    SHA512_Bytes(&state, out, SHA512_DIGEST_SIZE);
 
     // get final output
     SHA512_Final(&state, out);
@@ -94,10 +128,10 @@ writes the derived key into <out>
 */
 void pbkdf2(const uint8_t * pw, size_t pwlen, const uint8_t salt[KDF_SALTSIZE], uint8_t out[KDF_OUTSIZE]) {
     //note: i is the ith iteration, starting from 1
-    uint8_t tmp[HASH_OUTSIZE];
+    uint8_t tmp[SHA512_DIGEST_SIZE];
     //we don't do the i padding because we only generate with DK=Hlen, thus i never changes and no security is lost.
 
-    memzero(out, HASH_OUTSIZE); //for the xoring later
+    memzero(out, SHA512_DIGEST_SIZE); //for the xoring later
 #ifdef KDF_USE_HMAC
     uint8_t kbuf[HASH_BLKSIZE];
     if (pwlen > HASH_BLKSIZE) { //make the password suitable for use
@@ -116,11 +150,11 @@ void pbkdf2(const uint8_t * pw, size_t pwlen, const uint8_t salt[KDF_SALTSIZE], 
     uint32_t _x = __builtin_bswap32(1); 
     memcpy(&(saltbuf[KDF_SALTSIZE]), &_x, sizeof(_x));
     hmac(kbuf, salt, KDF_SALTSIZE, tmp); //initial time, use salt as message
-    for (size_t k = 0; k < HASH_OUTSIZE; ++k) 
+    for (size_t k = 0; k < SHA512_DIGEST_SIZE; ++k) 
         out[k] ^= tmp[k];
     for (size_t i = 1; i < KDF_ITER; ++i) { // 1-base is correct
-        hmac(kbuf, tmp, HASH_OUTSIZE, tmp); //remaining times, use previous hashes as message
-        for (size_t k = 0; k < HASH_OUTSIZE; ++k) 
+        hmac(kbuf, tmp, SHA512_DIGEST_SIZE, tmp); //remaining times, use previous hashes as message
+        for (size_t k = 0; k < SHA512_DIGEST_SIZE; ++k) 
             out[k] ^= tmp[k];
     }
 #elif defined(KDF_USE_KMAC)

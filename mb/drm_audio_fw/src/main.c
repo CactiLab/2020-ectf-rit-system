@@ -114,16 +114,16 @@ typedef struct {
 #define SONGLEN_5S (current_song_header.len_250ms * 4 * 5)
 #define SONGLEN_FULL ((current_song_header.nr_segments-1 * SEGMENT_SONG_SIZE)+current_song_header.last_segment_size)
 
-struct segment_trailer {
+struct segment_trailer {  //128 - 44 = 84
     uint8_t id[SONGID_LEN]; //16
     uint32_t idx;           //4
     uint32_t next_segment_size; //4
-    uint8_t sig[HMAC_SIG_SIZE]; //64
+    uint8_t sig[SHA1_DIGEST_SIZE]; //20 64-20=44
     char _pad_[40]; //do not use this. for cryptographic padding purposes only. //40
 };
 
 struct {
-    char a[0-!(sizeof(struct segment_trailer) == 128 && CIPHER_BLOCKSIZE == 64)]; //if the segment trailer requirements fail, this will break.
+    char a[0-!(sizeof(struct segment_trailer) == 84 && CIPHER_BLOCKSIZE == 64)]; //if the segment trailer requirements fail, this will break.
 };
 
 /*
@@ -193,7 +193,7 @@ volatile mipod_buffer *mipod_in = (mipod_buffer*)SHARED_DDR_BASE;  //this ends u
 
 #define set_status_success() do{mipod_in->status=STATE_SUCCESS;}while(0)
 #define set_status_failed() do{mipod_in->status=STATE_FAILED;}while(0)
-static uint8_t segment_buffer[SEGMENT_BUF_SIZE + 128]; //the memory buffer that we copy our data to (either constant address or array, idk yet)
+static uint8_t segment_buffer[SEGMENT_BUF_SIZE + 84]; //the memory buffer that we copy our data to (either constant address or array, idk yet)
 
 enum PLAY_OPS {
     PLAYER_PLAY=0,
@@ -514,6 +514,21 @@ static bool region_name_to_rid(char *region_name, char *rid, int provisioned_onl
 #ifdef _MSC_VER //TODO: implement decrypt_segment_data (for play_segment)
 #pragma region crypto_sign
 #endif // _MSC_VER
+
+static bool verify_seg_blocksig(void* data_start, size_t sig_offset) {
+    //return !crypto_sign_ed25519_verify_detached((uint8_t*)data_start + sig_offset, data_start, sig_offset, mipod_pubkey);
+    uint8_t sig[SHA1_DIGEST_SIZE];
+    memset(sig, 0, SHA1_DIGEST_SIZE);
+
+    hmac_sha1(mipod_key, data_start, sig_offset, sig);
+        // mb_printf("hmac_seg_sig: ");
+        //  for (size_t i = 0; i < SHA1_DIGEST_SIZE; i++)
+        //  {
+        //      mb_printf("%x ", sig[i]);
+        //  }
+        //  mb_printf("\r\n");
+    return !memcmp(sig, (uint8_t*)data_start + sig_offset, SHA1_DIGEST_SIZE);
+}
 
 /*
 verify a data signature using the MIPOD public key.
@@ -980,17 +995,18 @@ static bool load_song_segment(void* arm_start, size_t segsize, uint32_t segidx) 
         mb_printf("Error song segment.\r\n");
         return false;
     }
-    return true;
 
 //    make sure the segment is something we actually signed and hasn't been swapped around
-//    if (verify_mp_blocksig(segment_buffer, sdata_size + offsetof(struct segment_trailer, sig))) {
-//        return true;
-//    }
-//    else {
-//        TAMPER();
-//        mb_printf("Invalid song.\r\n");
-//        return false;
-//    }
+   if (verify_seg_blocksig(segment_buffer, sdata_size + offsetof(struct segment_trailer, sig))) {
+    //    mb_printf("segment verification done.\r\n");
+       return true;
+   }
+   else {
+       TAMPER();
+       mb_printf("Invalid song.\r\n");
+       return false;
+   }
+// return true;
 }
 
 /*

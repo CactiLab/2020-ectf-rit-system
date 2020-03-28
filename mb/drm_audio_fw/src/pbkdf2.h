@@ -14,6 +14,10 @@
 #define HASH_FINAL(p_state,outbuf)  crypto_hash_sha512_final((p_state),(outbuf))
 #define HASH_BLKSIZE crypto_hash_sha512_BYTES
 #define HASH_OUTSIZE crypto_hash_sha512_BYTES
+#define KEY_IOPAD_SIZE 64
+#define KEY_IOPAD_SIZE128 128
+#define   SHA1_DIGEST_SIZE  20
+#define SHA512_DIGEST_SIZE  64
 
 #define KDF_OUTSIZE HASH_OUTSIZE //the desired output size of the derived key. equal to hash output size.
 #define KDF_ITER 4096 //this needs to go up alot lol
@@ -28,6 +32,7 @@ void pbkdf2(const uint8_t* pw, size_t pwlen, const uint8_t salt[KDF_SALTSIZE], u
 /*
 computes a sha2-512 hmac of <msg> using <key> into <out>
 */
-void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t out[HASH_OUTSIZE]);
+void hmac(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t out[SHA512_DIGEST_SIZE]);
+void hmac_sha1(uint8_t key[HASH_BLKSIZE], const uint8_t* msg, size_t msgsize, uint8_t out[SHA1_DIGEST_SIZE]);
 
 #endif // !PBKDF2_H
