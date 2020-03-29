@@ -95,8 +95,8 @@ size_t load_file(char *fname, mipod_digital_data *digital_data) {
         return 0;
     }
 
-    mp_printf("owner: %d\r\n", digital_data->play_data.drm.ownerID);
-    mp_printf("subchunk2_size: (%ld)\r\n", digital_data->play_data.drm.wavdata.chunk_size);
+    // mp_printf("owner: %d\r\n", digital_data->play_data.drm.ownerID);
+    // mp_printf("subchunk2_size: (%ld)\r\n", digital_data->play_data.drm.wavdata.chunk_size);
     digital_data->wav_size = digital_data->play_data.drm.wavdata.chunk_size - 44 + 8;
     mp_printf("wav_size: (%ldB)\r\n", digital_data->wav_size);
     
@@ -403,8 +403,14 @@ void digital_out(char *song_name) {
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
 
+    if (mipod_in->status == STATE_FAILED)
+    {
+        mp_printf("Digital out song failed.\r\n");
+        return;
+    }
+
     // open digital output file
-    int written = 0, wrote, length = mipod_in->digital_data.wav_size + 8;   // this 8???
+    int written = 0, wrote, length = mipod_in->digital_data.wav_size + 8;   // 44 for wav header, this 8???
     sprintf(fname, "%s.dout", song_name);
     int fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC);
     if (fd == -1){
@@ -413,9 +419,11 @@ void digital_out(char *song_name) {
     }
 
     // write song dump to file
-    mp_printf("Writing song to file '%s' (%dB)\r\n", fname, length);
+    mp_printf("Writing song to file '%s' (%dB)\r\n", fname, length + 44);
+    // write song header to file
+    write(fd, (char *)&mipod_in->digital_data.play_data.drm.wavdata, 44);
     while (written < length) {
-        wrote = write(fd, (char *)&mipod_in->digital_data + written, length - written);
+        wrote = write(fd, (char *)&mipod_in->digital_data.play_data.filedata[0] + written, length - written);
         if (wrote == -1) {
             mp_printf("Error in writing file! Error = %d \r\n", errno);
             return;
@@ -471,7 +479,7 @@ int main(int argc, char** argv)
             if (play_song(arg1) < 0) {
                 break;
             }
-        } else if (!strcmp(ops, "digital")) {
+        } else if (!strcmp(ops, "digital_out")) {
         	digital_out(arg1);
         } else if (!strcmp(ops, "share")) {
             share_song(arg1, arg2);

@@ -370,7 +370,7 @@ int main() {
 
     init_platform();
 
-/*
+    /*
     //Initialize the AES module
 
     XDecrypt myDecrypt;
@@ -394,7 +394,7 @@ int main() {
             return status;
         }
     }
-*/
+    */
 
     mb_printf("Setup our interrupt handler\r\n");
     //Setup our interrupt handler
