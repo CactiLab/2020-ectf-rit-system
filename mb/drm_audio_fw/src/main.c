@@ -111,9 +111,9 @@ typedef struct {
     uint8_t music_op;
 } internal_state;
 
-#define SONGLEN_30S (current_song_header.len_250ms * 4 * 30)
-#define SONGLEN_5S (current_song_header.len_250ms * 4 * 5)
-#define SONGLEN_FULL ((current_song_header.nr_segments-1 * SEGMENT_SONG_SIZE)+current_song_header.last_segment_size)
+#define SONGLEN_30S (mb_state.current_song_header.len_250ms * 4 * 30)
+// #define SONGLEN_5S (mb_state.current_song_header.len_250ms * 4 * 5)
+// #define SONGLEN_FULL ((mb_state.current_song_header.nr_segments-1 * SEGMENT_SONG_SIZE)+mb_state.current_song_header.last_segment_size)
 
 struct segment_trailer {  //128 - 44 = 84
     uint8_t id[SONGID_LEN]; //16
@@ -130,7 +130,7 @@ struct {
 /*
 checks to see if the shared user entry at <idx_> is in use.
 */
-#define CURRENT_DRM_SHARED_EMPTY_SLOT(idx_) (current_song_header.shared_users[idx_][0] == '\0')
+#define CURRENT_DRM_SHARED_EMPTY_SLOT(idx_) (mb_state.current_song_header.shared_users[idx_][0] == '\0')
 
 typedef struct {
     char name[UNAME_SIZE]; //the username of the requested user
@@ -190,7 +190,7 @@ typedef volatile struct __attribute__((__packed__)) {
 // static uint8_t pin_buffer[PIN_SIZE]; //used for the current pin being tested.
 // static uint32_t current_uid = INVALID_UID;
 
-static drm_header current_song_header;
+// static drm_header current_song_header;
 volatile mipod_buffer *mipod_in = (mipod_buffer*)SHARED_DDR_BASE;  //this ends up as a constant address
 
 #define set_status_success() do{mipod_in->status=STATE_SUCCESS;}while(0)
@@ -539,7 +539,7 @@ data layout looks like:
 [....data....][signature]
 ^-data_start  ^-sig_offset
 */
-//verify_mp_blocksig(&current_song_header, offsetof(drm_header, mp_sig)
+//verify_mp_blocksig(&mb_state.current_song_header, offsetof(drm_header, mp_sig)
 static bool verify_mp_blocksig(void* data_start, size_t sig_offset) {
     //return !crypto_sign_ed25519_verify_detached((uint8_t*)data_start + sig_offset, data_start, sig_offset, mipod_pubkey);
     uint8_t sig[HASH_OUTSIZE];
@@ -901,23 +901,23 @@ OWNER => the header is valid, and the current user owns it.
 SHARED => the song is valid, and the current user has it shared with them.
 BADREGION => the song may not be played in the current region, but appears to be a valid song.
 BADUSER => the song is neither owned by or shared with the current user, but appears to be a valid song.
-BADSIG => the song is invalid and may be discarded (current_song_header and other state will be cleared).
+BADSIG => the song is invalid and may be discarded (mb_state.current_song_header and other state will be cleared).
 */
 int32_t load_song_header(drm_header * arm_drm) {
-    copytolocal(&current_song_header, arm_drm, sizeof(current_song_header));
+    memcpy(&mb_state.current_song_header, arm_drm, sizeof(drm_header));
 
     //check the edc signature of the mipod application
-    if (!verify_mp_blocksig(&current_song_header, offsetof(drm_header, mp_sig))) {
+    if (!verify_mp_blocksig(&mb_state.current_song_header, offsetof(drm_header, mp_sig))) {
         //if its a bad signature, we don't want to play ANY of it, so make sure that we clear it as being loaded.
         mb_printf("Invalid song!\r\n");
-        clear_obj(current_song_header);
+        clear_obj(mb_state.current_song_header);
         TAMPER();
         return SONG_BADSIG;
     }
 
     //check each region in the song to see if it is a valid region that we can play.
     for (size_t i = 0; i < MAX_SHARED_REGIONS; ++i) {
-        uint32_t _rid = current_song_header.regions[i];
+        uint32_t _rid = mb_state.current_song_header.regions[i];
         if (valid_region(_rid))
             goto region_success;
         if (_rid == INVALID_RID)
@@ -928,15 +928,15 @@ int32_t load_song_header(drm_header * arm_drm) {
 region_success:;
 
     //check to see if the owner exists
-    uint8_t uid = current_song_header.ownerID;
+    uint8_t uid = mb_state.current_song_header.ownerID;
     if (uid == INVALID_UID){
         mb_printf("Invalid user. You don't have the access to the full song, only 30s.\r\n");
         return SONG_BADUSER;
     }
         
     //check the edc signature of the shared section against the owners key
-    if (!verify_user_blocksig(&current_song_header, offsetof(drm_header, owner_sig), uid)) {
-        clear_obj(current_song_header);
+    if (!verify_user_blocksig(&mb_state.current_song_header, offsetof(drm_header, owner_sig), uid)) {
+        clear_obj(mb_state.current_song_header);
         mb_printf("User verify faild!\r\n");
         return SONG_BADSIG;
     }
@@ -971,7 +971,7 @@ region_success:;
 unloads the current song drm header, clears the song owners
 */
 void unload_song_header(void) {
-    clear_obj(current_song_header);
+    clear_obj(mb_state.current_song_header);
     mb_state.own_current_song = false;
     mb_state.shared_current_song = false;
 }
@@ -995,7 +995,7 @@ static bool load_song_segment(void* arm_start, size_t segsize, uint32_t segidx) 
     struct segment_trailer* trailer = (struct segment_trailer*) ((uint8_t*)segment_buffer + sdata_size);
 
     //if there is an index mismatch or the segment does not belong to the current song, somebody is being naughty
-    if (trailer->idx != segidx || memcmp(current_song_header.song_id, trailer->id, SONGID_LEN)) {
+    if (trailer->idx != segidx || memcmp(mb_state.current_song_header.song_id, trailer->id, SONGID_LEN)) {
         //memzero?
         mb_printf("Error song segment.\r\n");
         return false;
@@ -1188,10 +1188,10 @@ restart_playing:;
     mipod_in->status = STATE_PLAYING;
     uint8_t* fseg = &(mipod_in->digital_data.play_data.filedata[0]); //a pointer to the start of the segment to load within the shared memory section
     size_t i = 0;
-    uint32_t segsize = current_song_header.first_segment_size;
+    uint32_t segsize = mb_state.current_song_header.first_segment_size;
     //loop through all the segments in the file, make sure the update size is correct
     DMA_flag = 0;
-    for (; i < current_song_header.nr_segments; ++i) {
+    for (; i < mb_state.current_song_header.nr_segments; ++i) {
         if (!load_song_segment(fseg, segsize, i)){
             if (i == 0) {
                 mb_printf("Load song segment failed.\r\n");
@@ -1290,7 +1290,7 @@ bool startup_query(void) {
 bool query_song(void) {
     char *name;
     mb_printf("Starting queried player regions and users\r\n"); 
-    memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(mb_state.current_song_header)); 
+    memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(drm_header)); 
 
     // copy owner name
 
@@ -1366,11 +1366,11 @@ bool digitize_song(void) {
     uint8_t* fseg = &(mipod_in->digital_data.play_data.filedata[0]); //a pointer to the start of the segment to load within the shared memory section
     uint8_t* arm_decrypted = fseg; //a pointer to the next byte in the shared memory to write decrypted file to
     size_t decrypted_mem = 0;
-    size_t segsize = current_song_header.first_segment_size;
+    size_t segsize = mb_state.current_song_header.first_segment_size;
 
     //load and decrypt all the segments
     size_t i = 0;
-    for (; i < current_song_header.nr_segments; i++) {
+    for (; i < mb_state.current_song_header.nr_segments; i++) {
         if (bytes_max && offset >= bytes_max) { //make sure we aren't playing too much audio
             mb_debug("End loading the song.\r\n");
             break;
