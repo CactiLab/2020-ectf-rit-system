@@ -88,10 +88,15 @@ size_t load_file(char *fname, mipod_digital_data *digital_data) {
         mp_printf("Failed to stat file! Error = %d\r\n", errno);
         return 0;
     }
+    //mp_printf("Song name: %s\r\n",fname);
+    ssize_t readValue = read(fd, &(digital_data->play_data), sb.st_size);
+    if (readValue == -1) {
+        close(fd);
+        return 0;
+    }
 
-    read(fd, &(digital_data->play_data), sb.st_size);
-    // mp_printf("owner: %s\r\n", digital_data->play_data.drm.owner);
-    // mp_printf("subchunk2_size: (%ld)\r\n", digital_data->play_data.drm.wavdata.chunk_size);
+    mp_printf("owner: %d\r\n", digital_data->play_data.drm.ownerID);
+    mp_printf("subchunk2_size: (%ld)\r\n", digital_data->play_data.drm.wavdata.chunk_size);
     digital_data->wav_size = digital_data->play_data.drm.wavdata.chunk_size - 44 + 8;
     mp_printf("wav_size: (%ldB)\r\n", digital_data->wav_size);
     
@@ -121,6 +126,10 @@ void login(char *username, char *pin) {
     send_command(MIPOD_LOGIN);
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
+    if (mipod_in->status == STATE_FAILED) {
+        mp_printf("Login Failed\r\n");
+        return;
+    }
 }
 
 
@@ -130,6 +139,7 @@ void logout() {
     send_command(MIPOD_LOGOUT);
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
+    return;
 }
 
 
@@ -190,7 +200,7 @@ void query_song(char *song_name) {
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
 
     // print query results
-    mp_printf("Owner: %s", mipod_in->digital_data.play_data.drm.ownerID);
+    mp_printf("Owner: %d", mipod_in->digital_data.play_data.drm.ownerID);
     printf("\r\n");
 
     // mp_printf("regions: %s\r\n", mipod_in->digital_data.play_data.drm.regions[0]);
@@ -235,6 +245,7 @@ void share_song(char *song_name, char *username) {
     if (!username) {
         mp_printf("Need song name and username\r\n");
         print_help();
+        return;
     }
 
     // load the song into the shared buffer
@@ -244,22 +255,27 @@ void share_song(char *song_name, char *username) {
     }
     
    // strncpy((char *)mipod_in->share_data.target_name, username,UNAME_SIZE);
-    mipod_in->share_data.drm = mipod_in->digital_data.play_data.drm;
+   // mipod_in->share_data.drm = mipod_in->digital_data.play_data.drm;
+    //strncpy(mipod_in->share_data.drm, &mipod_in->digital_data.play_data.drm,sizeof(drm_header));
     
-    mp_printf("brefore STRNCPY owner in mipodIn: %s\r\n", mipod_in->digital_data.play_data.drm.ownerID);
+    /*mp_printf("brefore STRNCPY owner in mipodIn: %d\r\n", mipod_in->digital_data.play_data.drm.ownerID);
     mp_printf("before STRNCPY subchunk2_size in mipodIn: (%ld)\r\n", mipod_in->digital_data.play_data.drm.wavdata.chunk_size);
-    mp_printf("before STRNCPY owner in share_data: %s\r\n",mipod_in->share_data.drm.ownerID);
-    mp_printf("before STRNCPY subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);
-    strncpy((char *)mipod_in->share_data.target_name, username,UNAME_SIZE);
-    mp_printf("owner in mipodIn: %s\r\n", mipod_in->digital_data.play_data.drm.ownerID);
+    mp_printf("before STRNCPY owner in share_data: %d\r\n",mipod_in->share_data.drm.ownerID);
+    mp_printf("before STRNCPY subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);*/
+    strncpy((char *)mipod_in->shared_user, username,UNAME_SIZE);
+    /*mp_printf("owner in mipodIn: %d\r\n", mipod_in->digital_data.play_data.drm.ownerID);
     mp_printf("subchunk2_size in mipodIn: (%ld)\r\n", mipod_in->digital_data.play_data.drm.wavdata.chunk_size);
-    mp_printf("owner in share_data: %s\r\n",mipod_in->share_data.drm.ownerID);
-    mp_printf("subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);
+    mp_printf("owner in share_data: %d\r\n",mipod_in->share_data.drm.ownerID);
+    mp_printf("subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);*/
     // drive DRM
     send_command(MIPOD_SHARE);
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start sorking
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to share song
-
+  
+    if (mipod_in->status == STATE_FAILED) {
+        mp_printf("Share rejected\r\n");
+        return;
+    }
     // request was rejected if WAV length is 0
    /* length = mipod_in->digital_data.wav_size;
     if (length == 0) {
@@ -267,10 +283,10 @@ void share_song(char *song_name, char *username) {
         return;
     }*/
     //mipod_in->digital_data.play_data.drm = mipod_in->share_data.drm;
-    mp_printf("AFTER WRITTEN back owner in mipodIn: %s\r\n", mipod_in->digital_data.play_data.drm.ownerID);
+    /*mp_printf("AFTER WRITTEN back owner in mipodIn: %d\r\n", mipod_in->digital_data.play_data.drm.ownerID);
     mp_printf("AFTER WRITTEN back  subchunk2_size in mipodIn: (%ld)\r\n", mipod_in->digital_data.play_data.drm.wavdata.chunk_size);
-    mp_printf("AFTER WRITTEN back  owner in share_data: %s\r\n",mipod_in->share_data.drm.ownerID);
-    mp_printf("AFTER WRITTEN back subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);
+    mp_printf("AFTER WRITTEN back  owner in share_data: %d\r\n",mipod_in->share_data.drm.ownerID);
+    mp_printf("AFTER WRITTEN back subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);*/
    // mp_printf("AFTER WRITTEN back Length %d\r\n", length);
     
 
@@ -284,7 +300,7 @@ void share_song(char *song_name, char *username) {
     // write song dump to file
     mp_printf("Writing song to file '%s' (%dB)\r\n", song_name, length);
     while (written < length) {
-        wrote = write(fd, (char *)&mipod_in->share_data.drm + written, length - written);
+        wrote = write(fd, (char *)&mipod_in->digital_data.play_data.drm + written, length - written);
         if (wrote == -1) {
             mp_printf("Error in writing file! Error = %d\r\n", errno);
             return;
@@ -387,14 +403,8 @@ void digital_out(char *song_name) {
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
 
-    if (mipod_in->status == STATE_FAILED)
-    {
-        mp_printf("Digital out song failed.\r\n");
-        return;
-    }
-
     // open digital output file
-    int written = 0, wrote, length = mipod_in->digital_data.wav_size + 8 + 44;   // 44 for wav header, this 8???
+    int written = 0, wrote, length = mipod_in->digital_data.wav_size + 8;   // this 8???
     sprintf(fname, "%s.dout", song_name);
     int fd = open(fname, O_WRONLY | O_CREAT | O_TRUNC);
     if (fd == -1){
@@ -404,10 +414,8 @@ void digital_out(char *song_name) {
 
     // write song dump to file
     mp_printf("Writing song to file '%s' (%dB)\r\n", fname, length);
-    // write song header to file
-    write(fd, (char *)&mipod_in->digital_data.play_data.drm.wavdata, 44);
     while (written < length) {
-        wrote = write(fd, (char *)&mipod_in->digital_data.play_data.filedata[0] + written, length - written);
+        wrote = write(fd, (char *)&mipod_in->digital_data + written, length - written);
         if (wrote == -1) {
             mp_printf("Error in writing file! Error = %d \r\n", errno);
             return;
@@ -463,7 +471,7 @@ int main(int argc, char** argv)
             if (play_song(arg1) < 0) {
                 break;
             }
-        } else if (!strcmp(ops, "digital_out")) {
+        } else if (!strcmp(ops, "digital")) {
         	digital_out(arg1);
         } else if (!strcmp(ops, "share")) {
             share_song(arg1, arg2);

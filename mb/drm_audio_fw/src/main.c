@@ -174,11 +174,12 @@ typedef struct __attribute__((__packed__)) {
 typedef volatile struct __attribute__((__packed__)) {
     uint32_t operation; //IN, the operation id from enum mipod_ops
     uint32_t status; //OUT, the completion status of the command. DO NOT read this field.
+    char shared_user[UNAME_SIZE];
     union {
         mipod_login_data login_data;
         // struct mipod_play_data play_data;
         mipod_query_data query_data;
-        mipod_share_data share_data;
+       // mipod_share_data share_data;
         mipod_digital_data digital_data;
         char buf[MAX_SONG_SZ];
     };
@@ -903,13 +904,13 @@ BADUSER => the song is neither owned by or shared with the current user, but app
 BADSIG => the song is invalid and may be discarded (current_song_header and other state will be cleared).
 */
 int32_t load_song_header(drm_header * arm_drm) {
-    copytolocal(&current_song_header, arm_drm, sizeof(current_song_header));
+    copytolocal(&mb_state.current_song_header, arm_drm, sizeof(current_song_header));
 
     //check the edc signature of the mipod application
-    if (!verify_mp_blocksig(&current_song_header, offsetof(drm_header, mp_sig))) {
+    if (!verify_mp_blocksig(&mb_state.current_song_header, offsetof(drm_header, mp_sig))) {
         //if its a bad signature, we don't want to play ANY of it, so make sure that we clear it as being loaded.
         mb_printf("Invalid song!\r\n");
-        clear_obj(current_song_header);
+        clear_obj(mb_state.current_song_header);
         TAMPER();
         return SONG_BADSIG;
     }
@@ -927,15 +928,15 @@ int32_t load_song_header(drm_header * arm_drm) {
 region_success:;
 
     //check to see if the owner exists
-    uint8_t uid = current_song_header.ownerID;
+    uint8_t uid = mb_state.current_song_header.ownerID;
     if (uid == INVALID_UID){
         mb_printf("Invalid user.\r\n");
         return SONG_BADUSER;
     }
         
     //check the edc signature of the shared section against the owners key
-    if (!verify_user_blocksig(&current_song_header, offsetof(drm_header, owner_sig), uid)) {
-        clear_obj(current_song_header);
+    if (!verify_user_blocksig(&mb_state.current_song_header, offsetof(drm_header, owner_sig), uid)) {
+        clear_obj(mb_state.current_song_header);
         mb_printf("User verify faild!\r\n");
         return SONG_BADSIG;
     }
@@ -970,7 +971,7 @@ region_success:;
 unloads the current song drm header, clears the song owners
 */
 void unload_song_header(void) {
-    clear_obj(current_song_header);
+    clear_obj(mb_state.current_song_header);
     mb_state.own_current_song = false;
     mb_state.shared_current_song = false;
 }
@@ -1374,28 +1375,34 @@ note: assumes that all possible users will exist on the local device (ie no cros
 this seems to be in accordance with the spec, but I am not 100% sure.
 */
 bool share_song(void) {
+	bool rcode = false;
+    if (!mb_state.logged_in_user) {
+        mb_printf("Need to login first \r\n");
+        goto fail;
+    }
     char target[UNAME_SIZE];
 
-    memcpy(target, mipod_in->share_data.target_name, UNAME_SIZE);
-    mb_printf("in Song sharing \r\n");
-    bool rcode = false;
+    memcpy(target, mipod_in->shared_user, UNAME_SIZE);
+
 
     //make sure it is a valid song that we own
-    /*int32_t res = load_song_header(&mipod_in->share_data.drm);
-       if (res != SONG_OWNER)
-    	   goto fail;*/
-
+    int32_t res = load_song_header(&mipod_in->digital_data.play_data.drm);
+       if (res != SONG_OWNER) {
+    	   mb_printf("You are not owner of the song \r\n");
+    	   goto fail;
+       }
     //make sure the song has space for another user.
-    memcpy(&mb_state.current_song_header, &mipod_in->share_data.drm, sizeof(mb_state.current_song_header)); //remove after testing
+   // memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(drm_header)); //remove after testing
     size_t open = 0;
     int8_t targetuid = get_uid_by_name(target);
-    int32_t tempOwner = mb_state.current_song_header.ownerID;
+    uint8_t tempOwner = mb_state.current_song_header.ownerID;
     if (targetuid == INVALID_UID || targetuid == tempOwner) {
         mb_printf("Invalid Target \r\n");
         goto fail;
     }
     if (mb_state.current_song_header.shared_users[targetuid]==1) {
-        mb_printf("Song is already shared with %s \r\n");
+        mb_printf("Song is already shared with %s \r\n",target);
+        goto fail;
     }
     /*for (; open < MAX_SHARED_USERS; ++open) {
         if (_by_name(mb_state.current_song_header.shared_users[open]) == INVALID_UID)
@@ -1403,15 +1410,15 @@ bool share_song(void) {
             goto shared_space_ok;
     }*/
     //no space left for sharing, all the users are OK.
-    goto fail;
-shared_space_ok:;
+   // goto fail;
+//shared_space_ok:;
 
     //add the target to the shared users table
-    memcpy(mb_state.current_song_header.shared_users[targetuid], target, UNAME_SIZE);
-
+    //memcpy(mb_state.current_song_header.shared_users[targetuid], 1, sizeof(targetuid));
+    mb_state.current_song_header.shared_users[targetuid] = 1;
     //sign it with the owner's key and send it back to the caller
     sign_user_block(&mb_state.current_song_header, offsetof(drm_header, owner_sig));
-    memcpy(&mipod_in->share_data.drm, &mb_state.current_song_header, sizeof(mb_state.current_song_header));
+    memcpy(&mipod_in->digital_data.play_data.drm, &mb_state.current_song_header, sizeof(mb_state.current_song_header));
 
     //nothing else to do, so we are fine
     rcode = true;

@@ -241,11 +241,12 @@ typedef struct __attribute__((__packed__)) {
 typedef volatile struct __attribute__((__packed__)) {
     uint32_t operation; //IN, the operation id from enum mipod_ops
     uint32_t status; //OUT, the completion status of the command. DO NOT read this field.
+    char shared_user[UNAME_SIZE];
     union {
         mipod_login_data login_data;
         // struct mipod_play_data play_data;
         mipod_query_data query_data;       
-        mipod_share_data share_data;
+      //  mipod_share_data share_data;
         mipod_digital_data digital_data;
         char buf[MAX_SONG_SZ];
     };
