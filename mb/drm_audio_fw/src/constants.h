@@ -17,10 +17,10 @@
 #define INVALID_UID -1
 #define MAX_SHARED_USERS 64 //see: ectf requirements, 3.3.5
 
-#define EDDSA_SECRET_SIZE 32 //I think it may actually be 64, but it looks like 1/2 of that is the "random" number generated and 1/2 the public key, so who knows?
-#define EDDSA_PUBLIC_SIZE 32
-#define SODIUM_EDDSA_SECRET_SIZE (EDDSA_SECRET_SIZE + EDDSA_PUBLIC_SIZE)
-#define EDDSA_SIG_SIZE 64 
+// #define EDDSA_SECRET_SIZE 32 //I think it may actually be 64, but it looks like 1/2 of that is the "random" number generated and 1/2 the public key, so who knows?
+// #define EDDSA_PUBLIC_SIZE 32
+// #define SODIUM_EDDSA_SECRET_SIZE (EDDSA_SECRET_SIZE + EDDSA_PUBLIC_SIZE)
+// #define EDDSA_SIG_SIZE 64 
 
 #define ARGON2_THREADS 1
 #define ARGON2_LANES 1
@@ -31,7 +31,7 @@
 
 #define CIPHER_BLOCKSIZE 64 //the block size of the stream cipher being used for song encryption.
 //useage of chacha20 or aes-256 is recommended.
-#define KEY_IOPAD_SIZE128 128
+// #define KEY_IOPAD_SIZE128 128
 
 #define MAX_SHARED_REGIONS 32
 #define REGION_NAME_SZ 64
@@ -46,6 +46,14 @@
 
 #define PCM_DRV_BUFFER_SIZE 16000  // 0x3e80
 #define FIFO_CAP 4096*4
+
+// number of seconds to record/playback
+#define PREVIEW_TIME_SEC 30
+
+// ADC/DAC sampling rate in Hz
+#define AUDIO_SAMPLING_RATE 48000
+#define BYTES_PER_SAMP 2
+#define PREVIEW_SZ (PREVIEW_TIME_SEC * AUDIO_SAMPLING_RATE * BYTES_PER_SAMP)
 
 // printing utility
 #define MB_PROMPT "\r\nMB> "

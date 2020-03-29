@@ -83,7 +83,7 @@ typedef struct __attribute__((__packed__)) {
 
 #define SONGID_LEN 16
 
-typedef struct __attribute__((__packed__)) { //sizeof() = 1368
+typedef struct __attribute__((__packed__)) { //sizeof() 129  = 1368
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
     uint8_t ownerID; //the owner's name.
     uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
@@ -194,7 +194,7 @@ volatile mipod_buffer *mipod_in = (mipod_buffer*)SHARED_DDR_BASE;  //this ends u
 
 #define set_status_success() do{mipod_in->status=STATE_SUCCESS;}while(0)
 #define set_status_failed() do{mipod_in->status=STATE_FAILED;}while(0)
-static uint8_t segment_buffer[SEGMENT_BUF_SIZE + 84]; //the memory buffer that we copy our data to (either constant address or array, idk yet)
+static uint8_t segment_buffer[SEGMENT_BUF_SIZE + sizeof(struct segment_trailer)]; //the memory buffer that we copy our data to (either constant address or array, idk yet)
 
 enum PLAY_OPS {
     PLAYER_PLAY=0,
@@ -341,7 +341,7 @@ void gpio_entry() {
         case MIPOD_QUERY_SONG:
             res = query_song();
             break;
-        case MIPOD_DIGITAL: mb_debug("digital output command\r\n"); res = digitize_song(); break;
+        case MIPOD_DIGITAL: res = digitize_song(); break;
         case MIPOD_SHARE: mb_debug("sharing the song\r\n"); res = share_song(); break;
         default: goto fail;
         // default: break;
@@ -922,13 +922,14 @@ int32_t load_song_header(drm_header * arm_drm) {
         if (_rid == INVALID_RID)
             break;
     }
+    mb_printf("Bad region.\r\n");
     return SONG_BADREGION;
 region_success:;
 
     //check to see if the owner exists
     uint8_t uid = current_song_header.ownerID;
     if (uid == INVALID_UID){
-        mb_printf("Invalid user! Play 30s.\r\n");
+        mb_printf("Invalid user.\r\n");
         return SONG_BADUSER;
     }
         
@@ -943,7 +944,7 @@ region_success:;
     // mb_state.current_uid = 2;   //the login_user haven't finished, so set the owner id
     if (uid == mb_state.current_uid) {
         mb_state.own_current_song = true;
-        mb_printf("You are the owner of the song, now starting to play the full song.\r\n");
+        mb_printf("You are the owner of the song.\r\n");
         return SONG_OWNER;
     }
 
@@ -955,12 +956,13 @@ region_success:;
         if (uid == INVALID_UID)
             break;
         if (uid == mb_state.current_uid){
-            mb_printf("You are shared withe the song, now starting to play the full song.\r\n");
+            mb_printf("You are shared with the the song.\r\n");
             return SONG_SHARED;
         }        
     }
 
     //the song is total valid, but the user isn't allowed to play it
+    mb_printf("Invalid user!\r\n");
     return SONG_BADUSER;
 }
 
@@ -1162,7 +1164,7 @@ static bool play_song(void) {
 
     switch (load_song_header(&mipod_in->digital_data.play_data.drm)) {
     case(SONG_BADUSER):;
-    case(SONG_BADREGION):mb_printf("Bad region, play 30s.\r\n"); //we can play 30s, but no more
+    case(SONG_BADREGION):; //we can play 30s, but no more
         bytes_max = SONGLEN_30S;
         mipod_in->status = STATE_PLAYING;
         break;
@@ -1320,17 +1322,17 @@ bool digitize_song(void) {
 
     //need to add one condition to check if the song belongs to the login user(owner or shared)
 
-    if (mb_state.current_uid){
-        if (load_song_header(&mipod_in->digital_data.play_data.drm) == SONG_BADSIG) {
-        mb_debug("Invalid user.\r\n");
-        return false;
+    if (mb_state.current_uid != INVALID_UID){
+        if (load_song_header(&mipod_in->digital_data.play_data.drm) == SONG_BADUSER) {
+            mb_debug("Invalid user.\r\n");
+            unload_song_header();
+            return false;
         }
     }
-    else{
-        mb_debug("Please login first.\r\n");
+    else {
+        mb_printf("Please login first.\r\n");
         return false;
     }
-
 
     uint8_t* fseg = &(mipod_in->digital_data.play_data.filedata[0]); //a pointer to the start of the segment to load within the shared memory section
     uint8_t* arm_decrypted = fseg; //a pointer to the next byte in the shared memory to write decrypted file to

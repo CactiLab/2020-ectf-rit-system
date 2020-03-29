@@ -91,7 +91,7 @@ typedef struct __attribute__((__packed__)) {
 #define SONGID_LEN 16
 
 // This is for drm metadata
-typedef struct __attribute__((__packed__)) { //sizeof() = 1368
+typedef struct __attribute__((__packed__)) { //sizeof() = 297
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
     uint8_t ownerID; //the owner's name.
     uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
@@ -115,9 +115,9 @@ struct segment_trailer {
     char _pad_[40]; //do not use this. for cryptographic padding purposes only.
 };
 
-struct {
-    char a[0-!(sizeof(struct segment_trailer) == 128 && CIPHER_BLOCKSIZE == 64)]; //if the segment trailer requirements fail, this will break.
-};
+// struct {
+//     char a[0-!(sizeof(struct segment_trailer) == 128 && CIPHER_BLOCKSIZE == 64)]; //if the segment trailer requirements fail, this will break.
+// };
 
 // struct to interpret shared buffer as a drm song file
 // packing values skip over non-relevant WAV metadata
