@@ -104,6 +104,7 @@ typedef struct __attribute__((__packed__)) { //sizeof() = 1368
     uint8_t mp_sig[HMAC_SIG_SIZE]; //a signature (using the mipod private key) for all preceeding data
     uint8_t shared_users[MAX_SHARED_USERS]; //users that the owner has shared the song with.
     uint8_t owner_sig[HMAC_SIG_SIZE]; //a signature (using the owner's private key) for all preceeding data. resets whenever new user is shared with.
+    uint8_t pad[3];
 } drm_header;
 
 struct segment_trailer {

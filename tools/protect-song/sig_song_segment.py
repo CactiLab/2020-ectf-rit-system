@@ -3,8 +3,8 @@
 Description: Hash the encryt song with mipod_sig then store back to the tail.
 Use: Once per song
 Usage:
-./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile ../global_provisioning/audio/rit.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
-./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile testsha1.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
+./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile ../global_provisioning/audio/swan44k.drm --infile swan44k.wav --owner "misha" --user-secrets-path user.secrets
+./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile test.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
 output: encrypted song
 """
 
@@ -98,7 +98,7 @@ class CreateDrmHeader(object):
     # first_segment_size = struct.pack("=I", 0)
     def __init__(self, path_to_song, regions, user, user_secret_location, region_info):
         """
-        struct drm_header { //sizeof() = 1368
+        struct drm_header { //sizeof() = 297
             uint8_t song_id[SONGID_LEN=16];                         16      16     
             uint8_t ownerID;                                        1       17      
             uint8_t regions[MAX_SHARED_REGIONS=32];                 32      49 
@@ -177,7 +177,7 @@ class CreateDrmHeader(object):
         # SubChunk2ID=wav[36:40] # "data" in ASCII
         # SubChunk2Size=(struct.unpack("I",wav[40:44]))[0]
 
-        BytePer_250ms = (BytePerSec * 250 * 2) /1000 
+        BytePer_250ms = (BytePerSec * 250) /1000 
         return struct.pack("I", int(BytePer_250ms))
 
     def init_shared_users(self):
@@ -199,6 +199,7 @@ def write_header(outfile, drm_header):
     file.write(mp_sig)
     file.write(drm_header.shared_users)
     file.write(owner_sig)
+    file.write(struct.pack("=3s", str.encode('')))
     file.close()   
 
 def get_sig(drm_header):
