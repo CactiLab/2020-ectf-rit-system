@@ -93,8 +93,8 @@ typedef struct __attribute__((__packed__)) {
 // This is for drm metadata
 typedef struct __attribute__((__packed__)) { //sizeof() = 1368
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
-    char owner[UNAME_SIZE]; //the owner's name.
-    uint32_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
+    uint8_t ownerID; //the owner's name.
+    uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
     //song metadata
     uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
     uint32_t nr_segments; //the number of segments in the song
@@ -102,7 +102,7 @@ typedef struct __attribute__((__packed__)) { //sizeof() = 1368
     wav_header wavdata;
     //validation and sharing
     uint8_t mp_sig[HMAC_SIG_SIZE]; //a signature (using the mipod private key) for all preceeding data
-    char shared_users[MAX_SHARED_USERS][UNAME_SIZE]; //users that the owner has shared the song with.
+    uint8_t shared_users[MAX_SHARED_USERS]; //users that the owner has shared the song with.
     uint8_t owner_sig[HMAC_SIG_SIZE]; //a signature (using the owner's private key) for all preceeding data. resets whenever new user is shared with.
 } drm_header;
 

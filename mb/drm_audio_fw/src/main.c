@@ -85,8 +85,8 @@ typedef struct __attribute__((__packed__)) {
 
 typedef struct __attribute__((__packed__)) { //sizeof() = 1368
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
-    char owner[UNAME_SIZE]; //the owner's name.
-    uint32_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
+    uint8_t ownerID; //the owner's name.
+    uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
     //song metadata
     uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
     uint32_t nr_segments; //the number of segments in the song
@@ -94,7 +94,7 @@ typedef struct __attribute__((__packed__)) { //sizeof() = 1368
     wav_header wavdata;
     //validation and sharing
     uint8_t mp_sig[HMAC_SIG_SIZE]; //a signature (using the mipod private key) for all preceeding data
-    char shared_users[MAX_SHARED_USERS][UNAME_SIZE]; //users that the owner has shared the song with.
+    uint8_t shared_users[MAX_SHARED_USERS]; //users that the owner has shared the song with.
     uint8_t owner_sig[HMAC_SIG_SIZE]; //a signature (using the owner's private key) for all preceeding data. resets whenever new user is shared with.
 } drm_header;
 
@@ -788,7 +788,6 @@ static uint32_t get_uid_by_name(const char username[UNAME_SIZE]) {
     }
     return INVALID_UID;
 }
-
 /*
 perform the pbkdf2 function on the key and copy it to 
 uid is the user to do so on. IDK if uid is actually something that we will use.
@@ -926,7 +925,7 @@ int32_t load_song_header(drm_header * arm_drm) {
 region_success:;
 
     //check to see if the owner exists
-    uint32_t uid = get_uid_by_name(current_song_header.owner);
+    uint8_t uid = current_song_header.ownerID;
     if (uid == INVALID_UID){
         mb_printf("Invalid user! Play 30s.\r\n");
         return SONG_BADUSER;
@@ -949,7 +948,9 @@ region_success:;
 
     //check to see if we have the song shared with us
     for (size_t i = 0; i < MAX_SHARED_USERS; ++i) {
-        uid = get_uid_by_name(mb_state.current_song_header.shared_users[i]);
+    	uid = INVALID_UID;
+    	if (mb_state.current_song_header.shared_users[i]==1)
+    		uid = i;
         if (uid == INVALID_UID)
             break;
         if (uid == mb_state.current_uid){
@@ -1377,24 +1378,33 @@ bool share_song(void) {
     bool rcode = false;
 
     //make sure it is a valid song that we own
-   // int32_t res = load_song_header(&mipod_in->share_data.drm);
-  //  if (res != SONG_OWNER)
-    //    goto fail;
+    /*int32_t res = load_song_header(&mipod_in->share_data.drm);
+       if (res != SONG_OWNER)
+    	   goto fail;*/
 
     //make sure the song has space for another user.
+    memcpy(&mb_state.current_song_header, &mipod_in->share_data.drm, sizeof(mb_state.current_song_header)); //remove after testing
     size_t open = 0;
-    uint32_t targetuid = INVALID_UID;
-    for (; open < MAX_SHARED_USERS; ++open) {
-        if ((targetuid = get_uid_by_name(mb_state.current_song_header.shared_users[open])) == INVALID_UID)
+    int8_t targetuid = get_uid_by_name(target);
+    int32_t tempOwner = mb_state.current_song_header.ownerID;
+    if (targetuid == INVALID_UID || targetuid == tempOwner) {
+        mb_printf("Invalid Target \r\n");
+        goto fail;
+    }
+    if (mb_state.current_song_header.shared_users[targetuid]==1) {
+        mb_printf("Song is already shared with %s \r\n");
+    }
+    /*for (; open < MAX_SHARED_USERS; ++open) {
+        if (_by_name(mb_state.current_song_header.shared_users[open]) == INVALID_UID)
             //if the first byte is 0 then there is no user and we are good.
             goto shared_space_ok;
-    }
+    }*/
     //no space left for sharing, all the users are OK.
     goto fail;
 shared_space_ok:;
 
     //add the target to the shared users table
-    memcpy(mb_state.current_song_header.shared_users[open], target, UNAME_SIZE);
+    memcpy(mb_state.current_song_header.shared_users[targetuid], target, UNAME_SIZE);
 
     //sign it with the owner's key and send it back to the caller
     sign_user_block(&mb_state.current_song_header, offsetof(drm_header, owner_sig));
