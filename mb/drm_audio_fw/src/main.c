@@ -414,13 +414,13 @@ int main() {
         mb_printf("Setup interruptsystem ERROR\r\n");
         return XST_FAILURE;
     }
-
-//    // Configure the DMA
-//    status = fnConfigDma(&sAxiDma);
-//    if (status != XST_SUCCESS) {
-//        mb_printf("DMA configuration ERROR\r\n");
-//        return XST_FAILURE;
-//    }
+    /*
+   // Configure the DMA
+   status = fnConfigDma(&sAxiDma);
+   if (status != XST_SUCCESS) {
+       mb_printf("DMA configuration ERROR\r\n");
+       return XST_FAILURE;
+   }*/
     initialize_mb_State();
     mipod_in->operation = MIPOD_STOP;
 
@@ -429,11 +429,11 @@ int main() {
 
     mb_printf("Audio DRM Module has Booted\r\n");
 
-//    static const uint8_t mipod_key[] = "hello";
+    //static const uint8_t mipod_key[] = "hello";
 
-//    uint8_t sig[HASH_OUTSIZE];
+    //uint8_t sig[HASH_OUTSIZE];
 
-//    hmac((uint8_t *)"hello", "hello", 5, sig);
+    //hmac((uint8_t *)"hello", "hello", 5, sig);
 
     // Handle commands forever
     while(1);
@@ -904,13 +904,13 @@ BADUSER => the song is neither owned by or shared with the current user, but app
 BADSIG => the song is invalid and may be discarded (current_song_header and other state will be cleared).
 */
 int32_t load_song_header(drm_header * arm_drm) {
-    copytolocal(&mb_state.current_song_header, arm_drm, sizeof(current_song_header));
+    copytolocal(&current_song_header, arm_drm, sizeof(current_song_header));
 
     //check the edc signature of the mipod application
-    if (!verify_mp_blocksig(&mb_state.current_song_header, offsetof(drm_header, mp_sig))) {
+    if (!verify_mp_blocksig(&current_song_header, offsetof(drm_header, mp_sig))) {
         //if its a bad signature, we don't want to play ANY of it, so make sure that we clear it as being loaded.
         mb_printf("Invalid song!\r\n");
-        clear_obj(mb_state.current_song_header);
+        clear_obj(current_song_header);
         TAMPER();
         return SONG_BADSIG;
     }
@@ -928,15 +928,15 @@ int32_t load_song_header(drm_header * arm_drm) {
 region_success:;
 
     //check to see if the owner exists
-    uint8_t uid = mb_state.current_song_header.ownerID;
+    uint8_t uid = current_song_header.ownerID;
     if (uid == INVALID_UID){
-        mb_printf("Invalid user.\r\n");
+        mb_printf("Invalid user. You don't have the access to the full song, only 30s.\r\n");
         return SONG_BADUSER;
     }
         
     //check the edc signature of the shared section against the owners key
-    if (!verify_user_blocksig(&mb_state.current_song_header, offsetof(drm_header, owner_sig), uid)) {
-        clear_obj(mb_state.current_song_header);
+    if (!verify_user_blocksig(&current_song_header, offsetof(drm_header, owner_sig), uid)) {
+        clear_obj(current_song_header);
         mb_printf("User verify faild!\r\n");
         return SONG_BADSIG;
     }
@@ -945,7 +945,7 @@ region_success:;
     // mb_state.current_uid = 2;   //the login_user haven't finished, so set the owner id
     if (uid == mb_state.current_uid) {
         mb_state.own_current_song = true;
-        mb_printf("You are the owner of the song.\r\n");
+        mb_printf("You have the access to this song.\r\n");
         return SONG_OWNER;
     }
 
@@ -957,13 +957,13 @@ region_success:;
         if (uid == INVALID_UID)
             break;
         if (uid == mb_state.current_uid){
-            mb_printf("You are shared with the the song.\r\n");
+            mb_printf("You have the access to this song.\r\n");
             return SONG_SHARED;
         }        
     }
 
     //the song is total valid, but the user isn't allowed to play it
-    mb_printf("Invalid user!\r\n");
+    mb_printf("Invalid user!  You don't have the access to the full song, only 30s.\r\n");
     return SONG_BADUSER;
 }
 
@@ -971,7 +971,7 @@ region_success:;
 unloads the current song drm header, clears the song owners
 */
 void unload_song_header(void) {
-    clear_obj(mb_state.current_song_header);
+    clear_obj(current_song_header);
     mb_state.own_current_song = false;
     mb_state.shared_current_song = false;
 }
@@ -1211,7 +1211,7 @@ restart_playing:;
 //        mb_debug("Decryption done, now play the segment.");
         //for each interval (250 ms right now) in bytes, play the audio and check for state changes.
         if (bytes_max && offset >= bytes_max) { //make sure we aren't playing too much audio
-            mb_debug("bytes_max is smaller than the offset, end playing.\r\n");
+            mb_debug("End loading the song.\r\n");
             goto unload;
         }
         offset += raw;
@@ -1271,13 +1271,13 @@ unload:;
 bool startup_query(void) {
     // mb_printf("Starting queried player regions and users\r\n");  
     for (int i = 0; i < TOTAL_REGIONS; i++){
-        copyfromlocal((char *)q_region_lookup(mipod_in->query_data, i), REGION_NAMES[provisioned_regions[i]], UNAME_SIZE);
+        memcpy((char *)q_region_lookup(mipod_in->query_data, i), REGION_NAMES[provisioned_regions[i]], UNAME_SIZE);
         // mipod_in->query_data.rids[i] = provisioned_regions[i];
     } 
     // copyfromlocal(mipod_in->query_data.rids, provisioned_regions, sizeof(provisioned_regions));
     
     for (size_t j = 0; j < TOTAL_USERS; j++) {
-        copyfromlocal((char *)q_user_lookup(mipod_in->query_data, j), provisioned_users[j].name, UNAME_SIZE);
+        memcpy((char *)q_user_lookup(mipod_in->query_data, j), provisioned_users[j].name, UNAME_SIZE);
         // char *user_tmp = provisioned_users[j].name;
         // mb_printf("users_list: %s", q_user_lookup(mipod_in->query_data, i));
     }
@@ -1289,15 +1289,19 @@ bool startup_query(void) {
 
 bool query_song(void) {
     char *name;
-    // mb_printf("Starting queried player regions and users\r\n");  
+    mb_printf("Starting queried player regions and users\r\n"); 
+    memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(mb_state.current_song_header)); 
+
+    // copy owner name
+
     for (int i = 0; i < NUM_REGIONS; i++){
         // char index = mipod_in->digital_data.play_data.drm.regions[i];
         // if( i > 0 && strcmp(index, 0))
         //     i = NUM_REGIONS;
-    	memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(mb_state.current_song_header));
-        rid_to_region_name(mb_state.current_song_header.regions[i], &name, false);
+        rid_to_region_name((uint8_t)(mb_state.current_song_header.regions[i]), &name, false);
+        mb_debug("region name: ", name);
         strncpy((char *)q_song_region_lookup(mipod_in->query_data, i), name, UNAME_SIZE);
-        // mb_printf("regions: %s", q_song_region_lookup(mipod_in->query_data, i));
+        mb_printf("regions: %s", q_song_region_lookup(mipod_in->query_data, i));
     } 
     return true;
 }
@@ -1323,17 +1327,41 @@ bool digitize_song(void) {
 
     //need to add one condition to check if the song belongs to the login user(owner or shared)
 
-    if (mb_state.current_uid != INVALID_UID){
-        if (load_song_header(&mipod_in->digital_data.play_data.drm) == SONG_BADUSER) {
-            mb_debug("Invalid user.\r\n");
-            unload_song_header();
-            return false;
-        }
-    }
-    else {
-        mb_printf("Please login first.\r\n");
+    size_t offset = 0, bytes_max = 0;
+
+    // if (mb_state.current_uid != INVALID_UID)
+    switch (load_song_header(&mipod_in->digital_data.play_data.drm))
+    {
+    case(SONG_BADUSER):;
+    case(SONG_BADREGION):; //we can play 30s, but no more
+        bytes_max = SONGLEN_30S;
+        break;
+    case(SONG_BADSIG):;
+        unload_song_header();
+        mipod_in->status = STATE_FAILED;
         return false;
+    case(SONG_OWNER): ;
+    case(SONG_SHARED): ; //we can play the full song
+        bytes_max = mipod_in->digital_data.wav_size;
+        break;
+#ifdef __GNUC__
+    default:__builtin_unreachable();
+#endif
     }
+
+    // mb_debug("byte_max: %d", bytes_max);
+
+    // if (mb_state.current_uid != INVALID_UID){
+    //     if (load_song_header(&mipod_in->digital_data.play_data.drm) == SONG_BADUSER) {
+    //         mb_debug("Invalid user.\r\n");
+    //         unload_song_header();
+    //         return false;
+    //     }
+    // }
+    // else {
+    //     mb_printf("Please login first.\r\n");
+    //     return false;
+    // }
 
     uint8_t* fseg = &(mipod_in->digital_data.play_data.filedata[0]); //a pointer to the start of the segment to load within the shared memory section
     uint8_t* arm_decrypted = fseg; //a pointer to the next byte in the shared memory to write decrypted file to
@@ -1342,16 +1370,31 @@ bool digitize_song(void) {
 
     //load and decrypt all the segments
     size_t i = 0;
-    for (; i < current_song_header.nr_segments; i++, fseg+=segsize) {
+    for (; i < current_song_header.nr_segments; i++) {
+        if (bytes_max && offset >= bytes_max) { //make sure we aren't playing too much audio
+            mb_debug("End loading the song.\r\n");
+            break;
+        }
         if (!load_song_segment(fseg, segsize, i)) {
-            unload_song_header();
-            memzero(mipod_in->digital_data.play_data.filedata, decrypted_mem); //more of an annoyance than actually secure, but oh well
-            return false;
+            if (i == 0)
+            {
+                mb_debug("Load song segment failed.\r\n");
+                unload_song_header();
+                memzero(mipod_in->digital_data.play_data.filedata, decrypted_mem); //more of an annoyance than actually secure, but oh well
+                return false;
+            }
+            else
+            {
+                mb_printf("Load song segment ends.\r\n");
+            }          
         }
         //decrypt and remove padding/trailers
         size_t raw = segsize - sizeof(struct segment_trailer);
         decrypt_segment_data(segment_buffer, raw);
         //this math assumes that everything is properly setup within the song, so, yknow, don't be stupid... 
+
+        offset += raw;
+        fseg+=segsize;
         segsize = ((struct segment_trailer*)((uint8_t*)segment_buffer + segsize - sizeof(struct segment_trailer)))->next_segment_size;
         Xil_MemCpy(arm_decrypted, segment_buffer, raw);
         decrypted_mem += raw;
@@ -1411,7 +1454,7 @@ bool share_song(void) {
     }*/
     //no space left for sharing, all the users are OK.
    // goto fail;
-//shared_space_ok:;
+    //shared_space_ok:;
 
     //add the target to the shared users table
     //memcpy(mb_state.current_song_header.shared_users[targetuid], 1, sizeof(targetuid));
