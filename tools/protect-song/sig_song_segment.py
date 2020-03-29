@@ -4,6 +4,7 @@ Description: Hash the encryt song with mipod_sig then store back to the tail.
 Use: Once per song
 Usage:
 ./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile ../global_provisioning/audio/rit.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
+./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile testsha1.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
 output: encrypted song
 """
 
@@ -99,19 +100,20 @@ class CreateDrmHeader(object):
         """
         struct drm_header { //sizeof() = 1368
             uint8_t song_id[SONGID_LEN=16];                         16      16     
-            char owner[UNAME_SIZE=16];                              16      32      
-            uint32_t regions[MAX_SHARED_REGIONS=32];                128     160 
-            uint32_t len_250ms;                                     4       164
-            uint32_t nr_segments;                                   4       168  
-            uint32_t first_segment_size;                            4       172
-            struct wav_header wavdata;                              44      216
-            uint8_t mp_sig[EDDSA_SIG_SIZE=64]; //miPod signature    64      280
-            char shared_users[UNAME_SIZE=16][MAX_SHARED_USERS=64];  64*16   280+1024=1304 
-            uint8_t owner_sig[EDDSA_SIG_SIZE=64];                   64      1368
+            uint8_t ownerID;                                        1       17      
+            uint8_t regions[MAX_SHARED_REGIONS=32];                 32      49 
+            uint32_t len_250ms;                                     4       53
+            uint32_t nr_segments;                                   4       57  
+            uint32_t first_segment_size;                            4       61
+            wav_header wavdata;                                     44      105
+            uint8_t mp_sig[EDDSA_SIG_SIZE=64]; //miPod signature    64      169
+            uint8_t shared_users[MAX_SHARED_USERS=64];              64      233 
+            uint8_t owner_sig[HMAC_SIG_SIZE=64];                    64      297
         };        
         """
 
-        self.owner = struct.pack('=16s', str.encode(user))
+        # self.owner = struct.pack('=16s', str.encode(user))
+        self.owner = self.get_owner_uid(user, user_secret_location)
         self.regions_id = self.create_max_regions(region_info, regions)
         self.wavdata = self.read_wav_header(path_to_song)
         # self.len_250ms = struct.pack('=I', 0)   
@@ -121,12 +123,18 @@ class CreateDrmHeader(object):
         self.shared_users = self.init_shared_users()
         # self.owner_sig = self.init_sig()
 
+    def get_owner_uid(self, user, user_secret_location):
+        user_secrets = json.load(open(os.path.abspath(user_secret_location)))
+        uid = int(user_secrets[user]['id'])
+        print("uid: ", uid)
+        return struct.pack('=B', uid)
+
     def create_max_regions(self, region_info, regions):
         rid = bytearray()
         for i in regions:
-            rid = rid + struct.pack("=I", int(region_info[str(i)]))
+            rid = rid + struct.pack("=B", int(region_info[str(i)]))
         for i in range(len(regions), 32):
-            rid = rid + struct.pack("=I", 0)
+            rid = rid + struct.pack("=B", 0)
         return rid
 
     def read_wav_header(self, path):
@@ -169,13 +177,13 @@ class CreateDrmHeader(object):
         # SubChunk2ID=wav[36:40] # "data" in ASCII
         # SubChunk2Size=(struct.unpack("I",wav[40:44]))[0]
 
-        BytePer_250ms = (BytePerSec * 250) /1000
+        BytePer_250ms = (BytePerSec * 250 * 2) /1000 
         return struct.pack("I", int(BytePer_250ms))
 
     def init_shared_users(self):
         shared_users = bytearray()
-        for i in range(0, 64):
-            shared_users = shared_users + struct.pack("=16s", str.encode(''))
+        for i in range(0, 16):
+            shared_users = shared_users + struct.pack("=4s", str.encode(''))
         return shared_users
 
 def write_header(outfile, drm_header):
