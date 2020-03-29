@@ -50,7 +50,7 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
     mipodSlat= os.urandom(16)
    
     try:
-        mipodKeyFile = open(os.path.join(device_dir, "mipodKey.secrets"), "w")
+        mipodKeyFile = open(os.path.join(device_dir, "mipodKey"), "wb")
     except Exception as e:
         print("Unable to open secrets file: {e}".format(e=e))
         return
@@ -60,11 +60,9 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
         print("Unable to open secrets file: {e}".format(e=e))  
         return
     
-    mipodKeyFile.write(f'''
-    {{ "mipodKey" : "{", ".join([  bin(int(keyByte))  for keyByte in mipodKey])}  "}}
-    ''')
+    mipodKeyFile.write(mipodKey)
     
-    s = "{"+ '"provisioned_user"'+":[\n"
+    s = "{\n"
     
  
 
@@ -80,14 +78,14 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
     # write secrets
     counter = 0
     for u in user_names:
-        s = s + '\n{\n"name": ' + '"'+ u+'",\n "user_hash" : "' 
+        s = s + '"'+u+'":\n['
         s = s +",".join([str(userHash) for userHash in hasMap[u]])
         counter = counter + 1
         if counter == len(user_names):
-            s = s + '"\n}'
+            s = s + ']\n'
         else:
-            s = s + '"\n},'
-    s =s+"\n]}"
+            s = s + '],\n'
+    s =s+"}"
     #print(s)
     provisioned_userFile.write(f'''
     {s}
