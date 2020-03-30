@@ -305,8 +305,7 @@ returns true/false for if the user is OK or not.
 */
 bool gen_check_user_secret(uint32_t uid) {
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
-    pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,mb_state.pin_buffer,sizeof(mb_state.pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt),500);
-
+    pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,mb_state.pin_buffer,sizeof(mb_state.pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt),400);
     return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
 }
 
@@ -315,39 +314,33 @@ attempts to logon a user
 returns true for success
 returns false for failure
 */
-bool login_user(void) {
-    if(mb_state.logged_in_user){
+bool login_user(void)
+{
+    char tmpnam[UNAME_SIZE];
+    uint32_t user = NULL;
+    if (mb_state.logged_in_user) {
         mb_printf("Already logged in. Please logout first.\r\n");
         return true;
-    }
-    else{
-    	char tmpnam[UNAME_SIZE];
-		memcpy(tmpnam, mipod_in->login_data.name, UNAME_SIZE);
-		uint32_t user = get_uid_by_name(tmpnam);
-
-        //ensure there is not a user currently logged in and the user actually exists
-        if (mb_state.current_uid == INVALID_UID && user == INVALID_UID){
+    } else {
+        memcpy(tmpnam, mipod_in->login_data.name, UNAME_SIZE);
+        mb_printf("User Name is: %s\r\n", tmpnam);
+        user = get_uid_by_name(tmpnam);
+        if (mb_state.current_uid == INVALID_UID && user == INVALID_UID) {
             mb_printf("Invalid user!\r\n");
             return false;
         }
-        memcpy(mb_state.pin_buffer, (void*)mipod_in->login_data.pin, sizeof(mb_state.pin_buffer)); //no TOCTOU here
-
-        //if everything is fine, go ahead and log them in.
+        memcpy(mb_state.pin_buffer, (void *)mipod_in->login_data.pin, sizeof(mb_state.pin_buffer));
         if (!gen_check_user_secret(user)) {
             mb_printf("Wrong PIN!\r\n");
             return false;
-        }
-        else {
-        	mb_state.logged_in_user = true;
+        } else
+        {
+            mb_state.logged_in_user = true;
             mb_printf("User %s logged in.\r\n", tmpnam);
-            mb_state.current_uid = user; //ensure everything is good.
-            return true; //the user has logged in successfully.
+            mb_state.current_uid = user;
+            return true;
         }
     }
-    memset((void*)mipod_in->login_data.logged_in, 0, sizeof(uint32_t));
-    memset((void*)mipod_in->login_data.name, 0, UNAME_SIZE);
-    memset((void*)mipod_in->login_data.pin, 0, PIN_SIZE);
-    return false;
 }
 
 /*
@@ -680,6 +673,7 @@ bool startup_query(void) {
 
 bool query_song(void) {
     char *name;
+    int count =0;
     memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(drm_header));
     mb_printf("Song Owner: %s \r\n", provisioned_users[mb_state.current_song_header.ownerID].name);
     rid_to_region_name(mb_state.current_song_header.regions[0], &name, false);
@@ -691,7 +685,6 @@ bool query_song(void) {
     	}
     } 
     mb_printf("Shared Users: ");
-    int count =0;
     for (size_t j = 0; j < TOTAL_USERS; j++) {
     	if (mb_state.current_song_header.shared_users[j] == 1) {
     		count++;
@@ -789,45 +782,39 @@ bool digitize_song(void) {
 note: assumes that all possible users will exist on the local device (ie no cross-device song sharing, those users will be overwritten).
 this seems to be in accordance with the spec, but I am not 100% sure.
 */
-bool share_song(void) {
-	bool rcode = false;
-    if (!mb_state.logged_in_user) {
-        mb_printf("Need to login first \r\n");
-        goto fail;
-    }
+bool share_song(void)
+{
+    bool rcode = false;
     char target[UNAME_SIZE];
-
+    int32_t res = NULL;
+    int8_t targetuid = NULL;
+    uint8_t tempOwner = NULL;
+    if (!mb_state.logged_in_user) {
+        mb_printf("Need to login first!!!!\r\n");
+        goto fail;
+    }
     memcpy(target, mipod_in->shared_user, UNAME_SIZE);
-
-
-    //make sure it is a valid song that we own
-    int32_t res = load_song_header(&mipod_in->digital_data.play_data.drm);
-       if (res != SONG_OWNER) {
-    	   mb_printf("You are not owner of the song \r\n");
-    	   goto fail;
-       }
-    //make sure the song has space for another user.
-    size_t open = 0;
-    int8_t targetuid = get_uid_by_name(target);
-    uint8_t tempOwner = mb_state.current_song_header.ownerID;
+    res = load_song_header(&mipod_in->digital_data.play_data.drm);
+    if (res != SONG_OWNER) {
+        mb_printf("You are not owner of the song!!!\r\n");
+        goto fail;
+    }
+    targetuid = get_uid_by_name(target);
+    tempOwner = mb_state.current_song_header.ownerID;
     if (targetuid == INVALID_UID || targetuid == tempOwner) {
-        mb_printf("Invalid Target \r\n");
+        mb_printf("Invalid Target.\r\n");
         goto fail;
     }
-    if (mb_state.current_song_header.shared_users[targetuid]==1) {
-        mb_printf("Song is already shared with %s \r\n",target);
+    if (mb_state.current_song_header.shared_users[targetuid]) {
+        mb_printf("Song is already shared with user: %s \r\n", target);
         goto fail;
     }
-
     mb_state.current_song_header.shared_users[targetuid] = 1;
-    //sign it with the owner's key and send it back to the caller
     sign_user_block(&mb_state.current_song_header, offsetof(drm_header, owner_sig));
     memcpy(&mipod_in->digital_data.play_data.drm, &mb_state.current_song_header, sizeof(mb_state.current_song_header));
-
-    //nothing else to do, so we are fine
     rcode = true;
 
-fail:;
+    fail:;
     unload_song_header();
     return rcode;
 }

@@ -6,27 +6,25 @@ Use: Once per device
 import os
 import json
 from argparse import ArgumentParser
-#from argon2 import PasswordHasher
 import hashlib
+
 
 def main(region_names, user_names, user_secrets, region_secrets, device_dir):
     file_name = "device_secrets.h"
 
-    # create device directory
     try:
         os.mkdir(device_dir)
     except Exception as e:
-        print("Could not create directory {device_dir}: {e}".format(device_dir=device_dir, e=e))
+        print("Could not create directory {device_dir}: {e}".format(
+            device_dir=device_dir, e=e))
         return
 
-    # create device secrets file
     try:
         device_secrets = open(os.path.join(device_dir, file_name), "w")
     except Exception as e:
         print("Unable to open secrets file: {e}".format(e=e))
         return
 
-    # check for valid region names
     try:
         rids = [str(region_secrets[r]) for r in region_names]
     except Exception as e:
@@ -34,7 +32,7 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
               "Please ensure all regions entered are in the list: {user_secrets}".format(e=e, user_secrets=user_secrets.keys()))
         return
 
-    # check for valid user names
+
     try:
         uids = [str(user_secrets[u]['id']) for u in usernames]
     except Exception as e:
@@ -42,51 +40,42 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
               "Please ensure all regions entered are in the list: {user_secrets}".format(e=e, user_secrets=user_secrets.keys()))
         return
 
-    # generate randon secrects
-    #ph = PasswordHasher()
     hasMap = {}
     slatMap = {}
     mipodKey = os.urandom(64)
-    mipodSlat= os.urandom(16)
-   
+    mipodSlat = os.urandom(16)
+
     try:
         mipodKeyFile = open(os.path.join(device_dir, "mipodKey"), "wb")
     except Exception as e:
         print("Unable to open secrets file: {e}".format(e=e))
         return
     try:
-        provisioned_userFile = open(os.path.join(device_dir, "provisioned_user.secrets"), "w")
+        provisioned_userFile = open(os.path.join(
+            device_dir, "provisioned_user.secrets"), "w")
     except Exception as e:
-        print("Unable to open secrets file: {e}".format(e=e))  
+        print("Unable to open secrets file: {e}".format(e=e))
         return
-    
+
     mipodKeyFile.write(mipodKey)
-    
+
     s = "{\n"
-    
- 
 
     for u in user_names:
-        perSalt = os.urandom(16)  #16 bit slat
+        perSalt = os.urandom(16)
         slatMap[u] = perSalt
-        #argon2Hash = ph.hash(u+user_secrets[u]['pin'])
-        #print (len(argon2Hash))
-        hashValue = hashlib.pbkdf2_hmac('sha512', str.encode(user_secrets[u]['pin']), perSalt, 500)
-        #print(len(hashValue))
-        #hashValue = PBKDF2(ph.hash(u+user_secrets[u]['pin']), perSalt).read(64) # 256-bit hash
+        hashValue = hashlib.pbkdf2_hmac('sha512', str.encode(user_secrets[u]['pin']), perSalt, 400)
         hasMap[u] = hashValue
-    # write secrets
     counter = 0
     for u in user_names:
         s = s + '"'+u+'":\n['
-        s = s +",".join([str(userHash) for userHash in hasMap[u]])
+        s = s + ",".join([str(userHash) for userHash in hasMap[u]])
         counter = counter + 1
         if counter == len(user_names):
             s = s + ']\n'
         else:
             s = s + '],\n'
-    s =s+"}"
-    #print(s)
+    s = s+"}"
     provisioned_userFile.write(f'''
     {s}
 ''')
@@ -108,16 +97,17 @@ static const uint8_t mipod_salt[SALT_SIZE] ={{{", ".join([  str(saltByte) for sa
 static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{'+ ", ".join([ str(uSaltByte)  for uSaltByte in slatMap[u]])+'}'+','+ '{'+", ".join([ str(uHashByte)  for uHashByte in hasMap[u]])+'}'+'}' for u in user_names])} }};
 static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join(rids)} }};
 const uint32_t REGION_IDS[] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
-const char *REGION_NAMES[] = {{ "United States", "Japan", "Australia" }};
+const char *REGION_NAMES[] = {{ {", ".join(['"' + r + '"' for r in region_secrets])} }};
 #endif // SECRETS_H
 ''')
-
 
 def get_args():
     """gets arguments from command line"""
     parser = ArgumentParser(description='main interface to provision system')
-    parser.add_argument('--region-list', nargs='+', help='Regions the player is provisioned for.', required=True)
-    parser.add_argument('--region-secrets-path', help='Path to region secrets file.', required=True)
+    parser.add_argument('--region-list', nargs='+',
+                        help='Regions the player is provisioned for.', required=True)
+    parser.add_argument('--region-secrets-path',
+                        help='Path to region secrets file.', required=True)
     parser.add_argument('--user-list', help='List of users seperated by a space to provision the device for.',
                         nargs='+', required=True)
     parser.add_argument('--user-secrets-path', help='Path to user secrets file generated in createUsers.py',

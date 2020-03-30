@@ -176,18 +176,14 @@ void query_player() {
 }
 
 
-// queries the DRM about a song
 void query_song(char *song_name) {
-    // load the song into the shared buffer
     if (!load_file(song_name, &mipod_in->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
-
-    // drive DRM
     send_command(MIPOD_QUERY_SONG);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
-    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
+    while (mipod_in->status == MIPOD_STOP) continue;
+    while (mipod_in->status == STATE_WORKING) continue;
 }
 
 
@@ -202,51 +198,36 @@ void share_song(char *song_name, char *username) {
         print_help();
         return;
     }
-
-    // load the song into the shared buffer
     if (!load_file(song_name,(void*)&mipod_in->digital_data)) {
-        mp_printf("Failed to load song!\r\n");
+        mp_printf("You have entered wrong file name!!!\r\n");
         return;
     }
-
     strncpy((char *)mipod_in->shared_user, username,UNAME_SIZE);
-
-    // drive DRM
     send_command(MIPOD_SHARE);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start sorking
-    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to share song
+
+    while (mipod_in->status == MIPOD_STOP) continue; 
+    while (mipod_in->status == STATE_WORKING) continue; 
   
     if (mipod_in->status == STATE_FAILED) {
         mp_printf("Share rejected\r\n");
         return;
     }
-    // request was rejected if WAV length is 0
-    length = mipod_in->digital_data.wav_size;
-    if (length == 0) {
-        mp_printf("Share rejected\r\n");
-        return;
-    }
-    
-
-    // open output file
     fd = open(song_name, O_WRONLY);
     if (fd == -1){
-        mp_printf("Failed to open file! Error = %d\r\n", errno);
+        mp_printf("Failed to open the file. Share rejected \r\n");
         return;
     }
-
-    // write song dump to file
-    mp_printf("Writing song to file '%s' (%dB)\r\n", song_name, length);
+    mp_printf("Sharing Song:  '%s' \r\n", song_name);
     while (written < length) {
         wrote = write(fd, (char *)&mipod_in->digital_data.play_data.drm + written, length - written);
         if (wrote == -1) {
-            mp_printf("Error in writing file! Error = %d\r\n", errno);
+            mp_printf("Failed to Sharing Song: %s \r\n",song_name);
             return;
         }
         written += wrote;
     }
     close(fd);
-    mp_printf("Finished writing file\r\n");
+    mp_printf("Done Sharing.\r\n");
 }
 
 

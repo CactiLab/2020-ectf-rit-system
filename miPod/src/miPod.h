@@ -25,7 +25,7 @@
 #define MAX_QUERY_REGIONS MAX_SHARED_REGIONS /*TOTAL_REGIONS*/
 
 // miPod constants
-#define USR_CMD_SZ 64
+#define USR_CMD_SZ 100
 
 // printing utility
 #define MP_PROMPT "mP> "
