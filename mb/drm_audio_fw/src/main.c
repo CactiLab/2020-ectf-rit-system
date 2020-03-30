@@ -1,4 +1,5 @@
-// #include <stdint.h>
+// RIT design
+
 #include <stdbool.h>
 
 #include "secrets.h"
@@ -6,9 +7,7 @@
 #include "memops.h"
 #include "pbkdf2.h"
 #include "pbkdf2-hmac-sha512.h"
-
 #include "xdecrypt.h"
-
 #include "xparameters.h"
 #include "platform.h"
 #include "xstatus.h"
@@ -192,7 +191,7 @@ typedef volatile struct __attribute__((__packed__)) {
 // static uint32_t current_uid = INVALID_UID;
 
 // static drm_header current_song_header;
-volatile mipod_buffer *mipod_in = (mipod_buffer*)SHARED_DDR_BASE;  //this ends up as a constant address
+volatile mipod_buffer *mipod_in = (mipod_buffer *)SHARED_DDR_BASE;  //this ends up as a constant address
 
 #define set_status_success() do{mipod_in->status=STATE_SUCCESS;}while(0)
 #define set_status_failed() do{mipod_in->status=STATE_FAILED;}while(0)
@@ -207,13 +206,14 @@ void initialize_mb_State () {
 	mb_state.working = false;
 	mb_state.music_op = MIPOD_STOP;
 }
+
 int DMA_flag = 0;
 // static bool own_current_song = false;
 // static bool shared_current_song = false;
 // static volatile bool working = false; //use this in the interrupt handler to avoid preemption race conditions (alone with interrupt en/dis)
 // static volatile uint8_t music_op = PLAYER_NONE; //the current operation the music player should perform (if it is in-use)
-#define start_working() working=true
-#define stop_working() working=false
+#define start_working() working = true
+#define stop_working() working = false
 
 #ifdef __GNUC__ //using inline asm ensures that the memset calls won't be optimized away.
 #define clear_buffer(buf_) do{ memzero((buf_),sizeof(buf_)); __asm__ volatile ("" ::: "memory"); }while(0)
@@ -386,12 +386,12 @@ int main() {
     mipod_in->operation = MIPOD_STOP;
 
     // clear mipod_buffer channel
-    memset((void*)mipod_in, 0, sizeof(mipod_buffer));
+    memset((void *)mipod_in, 0, sizeof(mipod_buffer));
 
     mb_printf("Audio DRM Module has Booted\r\n");
 
     // Handle commands forever
-    while(1){
+    while (1) {
         if (InterruptProcessed)
         {
             InterruptProcessed = false;
@@ -400,7 +400,7 @@ int main() {
             mipod_in->status = STATE_WORKING;
             mb_state.current_operation = mipod_in->operation;
             switch (mipod_in->operation) {
-                case MIPOD_PLAY: mb_debug("startup mipod play\r\n"); res = play_song(); mb_printf("Done playing song.\r\n");break;
+                case MIPOD_PLAY: mb_debug("startup mipod play\r\n"); res = play_song(); mb_printf("Done playing song.\r\n"); break;
                 //case MIPOD_PAUSE: mb_debug("pausing mipod\r\n"); pause_song(); break; //these are voids and handle stuff directly inside themselves.
                 //case MIPOD_RESUME: mb_debug("resuming the song\r\n"); resume_song(); break;
                 //case MIPOD_STOP: mb_debug("stopping the song\r\n"); stop_song(); return;
@@ -486,7 +486,6 @@ static bool rid_to_region_name(char rid, char **region_name, int provisioned_onl
     *region_name = "<unknown region>";
     return false;
 }
-
 
 // looks up the rid corresponding to the region name
 static bool region_name_to_rid(char *region_name, char *rid, int provisioned_only) {
@@ -1325,31 +1324,34 @@ bool startup_query(void) {
 }
 
 bool query_song(void) {
-    char *name;
+    char *name = NULL;
+    
     mb_printf("Starting queried player regions and users\r\n");  
     memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(drm_header));
     //memcpy((char *)mipod_in->query_data.owner_name, provisioned_users[mb_state.current_song_header.ownerID].name,UNAME_SIZE);
     mb_printf("Song Owner: %s \r\n", provisioned_users[mb_state.current_song_header.ownerID].name);
     rid_to_region_name(mb_state.current_song_header.regions[0], &name, false);
-	xil_printf("MB> Regions: %s", name);
+    xil_printf("MB> Regions: %s", name);
+    
     for (int i = 1; i < NUM_REGIONS; i++){
         // char index = mipod_in->digital_data.play_data.drm.regions[i];
         // if( i > 0 && strcmp(index, 0))
         //     i = NUM_REGIONS;
     	if (mb_state.current_song_header.regions[i]) {
-        rid_to_region_name(mb_state.current_song_header.regions[i], &name, false);
+	  rid_to_region_name(mb_state.current_song_header.regions[i], &name, false);
         //memcpy((char *)q_song_region_lookup(mipod_in->query_data, i),name,REGION_NAME_SZ);
         //strncpy((char *)q_song_region_lookup(mipod_in->query_data, i), name, UNAME_SIZE);
         xil_printf(", %s", name);
     	}
-    } 
+    }
+    
     mb_printf("Shared Users: ");
-    int count =0;
-    for (size_t j = 0; j < TOTAL_USERS; j++) {
+    int count = 0;
+    for (int j = 0; j < TOTAL_USERS; j++) {
     	if (mb_state.current_song_header.shared_users[j] == 1) {
     		count++;
     		//memcpy((char *)q_user_lookup(mipod_in->query_data, j), provisioned_users[j].name, UNAME_SIZE);
-    		if (count==1) {
+    		if (count == 1) {
     			xil_printf("%s ", provisioned_users[j].name);
     		} else {
     			xil_printf(", %s ", provisioned_users[j].name);
@@ -1358,7 +1360,7 @@ bool query_song(void) {
         // char *user_tmp = provisioned_users[j].name;
         // mb_printf("users_list: %s", q_user_lookup(mipod_in->query_data, i));
     }
-    if (count==0) {
+    if (count == 0) {
     	xil_printf("No Shared Users");
     }
     xil_printf("\r\n");
@@ -1478,7 +1480,7 @@ note: assumes that all possible users will exist on the local device (ie no cros
 this seems to be in accordance with the spec, but I am not 100% sure.
 */
 bool share_song(void) {
-	bool rcode = false;
+       bool rcode = false;
     if (!mb_state.logged_in_user) {
         mb_printf("Need to login first \r\n");
         goto fail;
@@ -1503,7 +1505,8 @@ bool share_song(void) {
         mb_printf("Invalid Target \r\n");
         goto fail;
     }
-    if (mb_state.current_song_header.shared_users[targetuid]==1) {
+    
+    if (mb_state.current_song_header.shared_users[targetuid]) {
         mb_printf("Song is already shared with %s \r\n",target);
         goto fail;
     }
