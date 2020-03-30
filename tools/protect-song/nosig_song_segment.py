@@ -3,9 +3,10 @@
 Description: Hash the encryt song with mipod_sig then store back to the tail.
 Use: Once per song
 Usage:
-./nosig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile orit.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
+./nosig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile ../global_provisioning/audio/oswan44k.drm --infile swan44k.wav --owner "misha" --user-secrets-path user.secrets
 output: encrypted song
 """
+
 
 import json
 import struct
@@ -19,6 +20,9 @@ from Crypto.Cipher import AES
 import hashlib
 import hmac
 from itertools import zip_longest
+
+buffer_size = 32000
+trail_header_size = 84
 
 def Transform(string):
     keylength = 4
@@ -100,7 +104,8 @@ class CreateDrmHeader(object):
         };        
         """
 
-        self.owner = struct.pack('=16s', str.encode(user))
+        # self.owner = struct.pack('=16s', str.encode(user))
+        self.owner = self.get_owner_uid(user, user_secret_location)
         self.regions_id = self.create_max_regions(region_info, regions)
         self.wavdata = self.read_wav_header(path_to_song)
         # self.len_250ms = struct.pack('=I', 0)   
@@ -110,12 +115,18 @@ class CreateDrmHeader(object):
         self.shared_users = self.init_shared_users()
         # self.owner_sig = self.init_sig()
 
+    def get_owner_uid(self, user, user_secret_location):
+        user_secrets = json.load(open(os.path.abspath(user_secret_location)))
+        uid = int(user_secrets[user]['id'])
+        print("uid: ", uid)
+        return struct.pack('=B', uid)
+
     def create_max_regions(self, region_info, regions):
         rid = bytearray()
         for i in regions:
-            rid = rid + struct.pack("=I", int(region_info[str(i)]))
+            rid = rid + struct.pack("=B", int(region_info[str(i)]))
         for i in range(len(regions), 32):
-            rid = rid + struct.pack("=I", 0)
+            rid = rid + struct.pack("=B", 0)
         return rid
 
     def read_wav_header(self, path):
@@ -158,13 +169,14 @@ class CreateDrmHeader(object):
         # SubChunk2ID=wav[36:40] # "data" in ASCII
         # SubChunk2Size=(struct.unpack("I",wav[40:44]))[0]
 
+        # (PREVIEW_TIME_SEC * AUDIO_SAMPLING_RATE * BYTES_PER_SAMP)
         BytePer_250ms = (BytePerSec * 250) /1000
         return struct.pack("I", int(BytePer_250ms))
 
     def init_shared_users(self):
         shared_users = bytearray()
-        for i in range(0, 64):
-            shared_users = shared_users + struct.pack("=16s", str.encode(''))
+        for i in range(0, 16):
+            shared_users = shared_users + struct.pack("=4s", str.encode(''))
         return shared_users
 
 def write_header(outfile, drm_header):
@@ -180,6 +192,7 @@ def write_header(outfile, drm_header):
     file.write(mp_sig)
     file.write(drm_header.shared_users)
     file.write(owner_sig)
+    file.write(struct.pack("=3s", str.encode('')))
     file.close()   
 
 def get_sig(drm_header):
@@ -223,9 +236,9 @@ class EncryptSong(object):
         self.wav_size = 0
         self.key = self.gen_key()
         # nr_segments = (struct.unpack('=I', nr_segments))[0]
-        self.first_segment_size = str.encode("%04d" % int(16 * 1000))  # block size
+        self.first_segment_size = str.encode("%04d" % int(16 * 1000 * 2))  # block size
         self.encrypt_str = self.encrypt_song(path_to_song)
-        self.plain_song = self.plain_song(path_to_song)
+        self.plain_song_str = self.plain_song(path_to_song)
         # define the segment_trailer
         self.idx = struct.pack('=I', 0)
         self.next_segment_size = struct.pack('=I', 0)
@@ -260,34 +273,29 @@ class EncryptSong(object):
             char a[0-!(sizeof(struct segment_trailer) == 128 && CIPHER_BLOCKSIZE == 64)]; //if the segment trailer requirements fail, this will break.
         };
         """
-        global mipod_key, song_id, pad
+        global mipod_key, song_id, pad, trail_header_size
         # segment_trailer = bytearray()
         self.idx = struct.pack('=I', idx)
         if next_segment_size == 0:
             self.next_segment_size = struct.pack('=I', 0)
         else:
-            self.next_segment_size = struct.pack('=I', next_segment_size + 128)
+            self.next_segment_size = struct.pack('=I', next_segment_size + trail_header_size)
         msg = en_segment + song_id + self.idx + self.next_segment_size
         fileOut = open("segment-en", "wb")
         fileOut.write(msg)
         fileOut.close()
 
-        # print('segment: ', msg)
-        m = hmac.new(mipod_key, digestmod="sha512")
-        # print("miod_key", mipod_key)
+        m = hmac.new(mipod_key, digestmod="sha1")
         m.update(msg)
         segment_sig = m.digest() 
-        # print(segment_sig)     
+        print(len(segment_sig))     
         segment_trailer = msg + segment_sig + pad
-
-        # print('en-segment: ', next_segment_size)
-        # print('segment: ', len(segment_trailer))
         
         return segment_trailer
 
     def encrypt_song(self, path):
         # open file
-        global nr_segments
+        global nr_segments, buffer_size
         nr_segments = 0
         encrypt_song_str = bytearray()
         file_name = os.path.abspath(path)
@@ -301,12 +309,14 @@ class EncryptSong(object):
         # self.wav_size = (struct.unpack('I', wav_header[40:44]))[0]
         self.wav_size = (struct.unpack('I', wav_header[4:8]))[0] - 44 + 8
         print("wav_size: ", self.wav_size)
-        p = int(self.wav_size / 14336)
-        remainder = int(self.wav_size % 14336)
+
+        self.first_segment_size = buffer_size
+        print("buffer_size: ", buffer_size)
+
+        p = int(self.wav_size / self.first_segment_size)
+        remainder = int(self.wav_size % self.first_segment_size)
         fill_block_size = 128 - int(remainder % 128)
         fill_block = bytearray(fill_block_size)
-
-        self.first_segment_size = 14336
         
         # self.first_segment_size = block_in_each_segment * 16
         print('first_segment: ', self.first_segment_size)
@@ -328,8 +338,12 @@ class EncryptSong(object):
         # encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, 0, self.first_segment_size)
         flag = 0
         segment_str = fileIn.read(self.first_segment_size)
-        # segment = TransSeg(segment, len(segment))
+        print("segment size: ", len(segment_str))
+        segment_str = TransSeg(segment_str, len(segment_str))
         encrypt_segment = segment_cipher.encrypt(segment_str)
+        # with open(file_name, "rb") as f:
+        #     while True:
+        #         dd = f.read()
         while fileIn.tell() < file_len:
             # print(fileIn.tell())
             segment = fileIn.read(self.first_segment_size)
@@ -337,6 +351,7 @@ class EncryptSong(object):
                 segment = segment + fill_block
                 # flag = 1
             next_size = len(segment)
+            # print("next_size: ", next_size)
             # if flag == 1:
             #     next_size = 0 
             segment = TransSeg(segment, len(segment))
@@ -346,14 +361,14 @@ class EncryptSong(object):
         # print(fileIn.tell())
         # write file segment
         encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, 0)
-#         nr_segments += 1 
+        # nr_segments += 1 
         fileIn.close()  
 
         return encrypt_song_str
 
     def plain_song(self, path):
         # open file
-        global nr_segments
+        global nr_segments, buffer_size
         nr_segments = 0
         plain_song_str = bytearray()
         file_name = os.path.abspath(path)
@@ -367,12 +382,13 @@ class EncryptSong(object):
         # self.wav_size = (struct.unpack('I', wav_header[40:44]))[0]
         self.wav_size = (struct.unpack('I', wav_header[4:8]))[0] - 44 + 8
         print("wav_size: ", self.wav_size)
-        p = int(self.wav_size / 14336)
-        remainder = int(self.wav_size % 14336)
+        
+        self.first_segment_size = buffer_size
+
+        p = int(self.wav_size / self.first_segment_size)
+        remainder = int(self.wav_size % self.first_segment_size)
         fill_block_size = 128 - int(remainder % 128)
         fill_block = bytearray(fill_block_size)
-
-        self.first_segment_size = 14336
         
         # self.first_segment_size = block_in_each_segment * 16
         print('first_segment: ', self.first_segment_size)
@@ -397,14 +413,14 @@ class EncryptSong(object):
         # write the last segment
         fileIn.close()
         plain_song_str = plain_song_str + self.create_song_segment_trailer(cipher_segment, nr_segments, 0)
-#         nr_segments += 1
+        # nr_segments += 1
 
         return plain_song_str
 
     def save_song(self, outfile):
         fileOut = open(outfile, "ab+")
         # fileOut.write(self.encrypt_str)
-        fileOut.write(self.plain_song)
+        fileOut.write(self.plain_song_str)
         fileOut.close
 
 def print_song_header(path):
@@ -484,8 +500,8 @@ def main():
     protect_song = EncryptSong(args.infile)
     # protect_song = PlainSong(args.infile)
     # The size of the first segment will be caculated when encrypt the song
-    global first_segment_size, nr_segments
-    first_segment_size = struct.pack('=I', protect_song.first_segment_size + 128)
+    global first_segment_size, nr_segments, trail_header_size
+    first_segment_size = struct.pack('=I', protect_song.first_segment_size + trail_header_size)
     mp_sig = get_sig(drm_header)
     write_header(args.outfile, drm_header)
     protect_song.save_song(args.outfile)
