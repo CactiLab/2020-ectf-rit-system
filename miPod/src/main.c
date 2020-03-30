@@ -88,14 +88,14 @@ size_t load_file(char *fname, mipod_digital_data *digital_data) {
         mp_printf("Failed to stat file! Error = %d\r\n", errno);
         return 0;
     }
-    //mp_printf("Song name: %s\r\n",fname);
+
     ssize_t readValue = read(fd, &(digital_data->play_data), sb.st_size);
     if (readValue == -1) {
         close(fd);
         return 0;
     }
-
-    // mp_printf("owner: %d\r\n", digital_data->play_data.drm.ownerID);
+    // read(fd, &(digital_data->play_data), sb.st_size);
+    // mp_printf("owner: %s\r\n", digital_data->play_data.drm.owner);
     // mp_printf("subchunk2_size: (%ld)\r\n", digital_data->play_data.drm.wavdata.chunk_size);
     digital_data->wav_size = digital_data->play_data.drm.wavdata.chunk_size - 44 + 8;
     mp_printf("wav_size: (%ldB)\r\n", digital_data->wav_size);
@@ -200,7 +200,7 @@ void query_song(char *song_name) {
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
 
     // print query results
-    mp_printf("Owner: %d", mipod_in->digital_data.play_data.drm.ownerID);
+    mp_printf("Owner: %s", mipod_in->digital_data.play_data.drm.ownerID);
     printf("\r\n");
 
     // mp_printf("regions: %s\r\n", mipod_in->digital_data.play_data.drm.regions[0]);
@@ -327,12 +327,6 @@ int play_song(char *song_name) {
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start playing
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to start playing
 
-    if (mipod_in->status == STATE_FAILED)
-    {
-        mp_printf("Play song failed.\r\n");
-        return -1;
-    }
-
     // play loop
     while(1) {
         // get a valid command
@@ -344,6 +338,12 @@ int play_song(char *song_name) {
             if (mipod_in->status == MIPOD_STOP) {
                 mp_printf("Song finished\r\n");
                 return 0;
+            }
+
+            if (mipod_in->status == STATE_FAILED)
+            {
+                mp_printf("Play song failed.\r\n");
+                return -1;
             }
         } while (strlen(usr_ops) < 2);
 
@@ -370,11 +370,15 @@ int play_song(char *song_name) {
             send_command(MIPOD_STOP);
             return -1;
         } else if (!strcmp(ops, "rw")) {
-            mp_printf("Unsupported feature.\r\n\r\n");
-            print_playback_help();
+            send_command(MIPOD_REWIND);
+            usleep(200000); // wait for DRM to print
+            // mp_printf("Unsupported feature.\r\n\r\n");
+            // print_playback_help();
         } else if (!strcmp(ops, "ff")) {
-            mp_printf("Unsupported feature.\r\n\r\n");
-            print_playback_help();
+            send_command(MIPOD_FORWARD);
+            usleep(200000); // wait for DRM to print
+            // mp_printf("Unsupported feature.\r\n\r\n");
+            // print_playback_help();
         } else if (!strcmp(ops, "lyrics")) {
             mp_printf("Unsupported feature.\r\n\r\n");
             print_playback_help();

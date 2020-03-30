@@ -1,8 +1,8 @@
 /*
  * miPod.h
  *
- *  Created on: Jan 9, 2020
- *      Author: ectf
+ *  Modified on: March 29, 2020
+ *      Author: rit
  */
 
 #ifndef SRC_MIPOD_H_
@@ -34,17 +34,6 @@
 #define print_prompt() printf(USER_PROMPT, "")
 #define print_prompt_msg(...) printf(USER_PROMPT, __VA_ARGS__)
 
-// struct to interpret shared buffer as a query
-/*
-typedef struct {
-    int num_regions;
-    int num_users;
-    char owner[USERNAME_SZ];
-    char regions[MAX_REGIONS * REGION_NAME_SZ];
-    char users[MAX_USERS * USERNAME_SZ];
-} query;
-*/
-
 // simulate array of 64B names without pointer indirection
 #define q_region_lookup(q, i) (q.regions + (i * REGION_NAME_SZ))
 #define q_user_lookup(q, i) (q.users_list + (i * UNAME_SIZE))
@@ -52,18 +41,6 @@ typedef struct {
 // query information for song (drm)
 #define q_song_region_lookup(q,i) (q.song_regions + (i * REGION_NAME_SZ))
 #define q_song_user_lookup(q, i) (q.shared_users + (i * UNAME_SIZE))
-
-
-// struct to interpret drm metadata
-/*
-typedef struct __attribute__((__packed__)) {
-    char md_size;
-    char owner_id;
-    char num_regions;
-    char num_users;
-    char buf[];
-} drm_md;
-*/
 
 typedef struct __attribute__((__packed__)) {
     //riff header
@@ -119,34 +96,6 @@ struct segment_trailer {
 //     char a[0-!(sizeof(struct segment_trailer) == 128 && CIPHER_BLOCKSIZE == 64)]; //if the segment trailer requirements fail, this will break.
 // };
 
-// struct to interpret shared buffer as a drm song file
-// packing values skip over non-relevant WAV metadata
-
-// need to be modified
-/*
-typedef struct __attribute__((__packed__)) {
-    char packing1[4];
-    int file_size;
-    char packing2[32];
-    int wav_size;
-    drm_md md;
-} song;
-*/
-
-
-// accessors for variable-length metadata fields
-
-// need to be modified
-//#define get_drm_rids(d) (d.md.buf)
-//#define get_drm_uids(d) (d.md.buf + d.md.num_regions)
-//#define get_drm_song(d) ((char *)(&d.md) + d.md.md_size)
-
-
-// shared buffer values
-/*
-enum commands { QUERY_PLAYER, QUERY_SONG, LOGIN, LOGOUT, SHARE, PLAY, STOP, DIGITAL_OUT, PAUSE, RESTART, FF, RW };
-enum states   { STOPPED, WORKING, PLAYING, PAUSED };
-*/
 enum mipod_ops {
     MIPOD_PLAY=0,
     MIPOD_PAUSE,
@@ -171,28 +120,8 @@ enum mipod_state {
     STATE_SUCCESS, //indicates an operation has completed successfully
     STATE_FAILED, //indicates an operation has failed
     STATE_PLAYING, //indicates that the firmware has started playing audio
-	STATE_STOPPED
+	STATE_PAUSED
 };
-
-// struct to interpret shared command channel
-
-/*
-typedef volatile struct __attribute__((__packed__)) {
-    char cmd;                   // from commands enum
-    char drm_state;             // from states enum
-    char login_status;          // 0 = logged off, 1 = logged on
-    char padding;               // not used
-    char username[USERNAME_SZ]; // stores logged in or attempted username
-    char pin[MAX_PIN_SZ];       // stores logged in or attempted pin
-
-    // shared buffer is either a drm song or a query
-    union {
-        song song;
-        query query;
-        char buf[MAX_SONG_SZ]; // sets correct size of cmd_channel for allocation
-    };
-} cmd_channel;
-*/
 
 /*
 checks to see if the shared user entry at <idx_> is in use.
