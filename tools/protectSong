@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """
-Description: Protects song by adding metadata or any other security measures
+Description: Hash the encryt song with mipod_sig then store back to the tail.
 Use: Once per song
+Usage:
+./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile ../global_provisioning/audio/swan44k.drm --infile swan44k.wav --owner "misha" --user-secrets-path user.secrets
+./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile test.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
+output: encrypted song
 """
+
 import json
 import struct
 import os
@@ -10,79 +15,237 @@ import wave
 from argparse import ArgumentParser
 import numpy as np
 
+import random, string
+from Crypto.Cipher import AES
+import hashlib
+import hmac
+from itertools import zip_longest
 
-class ProtectedSong(object):
-    """Example song object for protected song"""
+def Transform(string):
+    keylength = 4
+    transposed_str = bytes()
+    blocks = [string[i:i+keylength] for i in range(0, len(string)+1, keylength)]
+    transposed = [bytes(t) for t in zip_longest(*blocks, fillvalue=0)]
+    for i in range(0, 4):
+        transposed_str = transposed_str + transposed[i][0:4]
+    return transposed_str
 
-    def __init__(self, path_to_song, metadata):
-        """initialize values
-        Args:
-            path_to_song (string): file name where the song to be provisioned is stored
-            metadata (bytearray): bytes containing metadata information
-        """
-        self.song = path_to_song
-        self.full_song, self.original_song = self.read_song(path_to_song)
-        self.metadata = metadata
+def TransSeg(segment, size):  # len should be multiple of 16
+    count = int(size/16)
+    block_size = 16
+    segment_trans = bytes()
+    blocks = [segment[i:i+block_size] for i in range(0, len(segment)+1, block_size)]
+    for i in range(0, count):
+        segment_trans = segment_trans + Transform(blocks[i])
+    return segment_trans
 
-    def save_secured_song_to_wave(self, file_location):
-        """Saves secured song to wave file assuming all the same characteristics as original song
-        Args:
-            file_location (string): location to store the file including name"""
-        protected_wav = wave.open(os.path.abspath(file_location), 'wb')
-        protected_wav.setnchannels(self.original_song.getnchannels())
-        protected_wav.setsampwidth(self.original_song.getsampwidth())
-        protected_wav.setframerate(self.original_song.getframerate())
-        protected_wav.writeframes(self.metadata)
+def init_sig():
+    owner_sig = ''
+    for i in range(0, 4):
+        owner_sig = owner_sig + "".join(random.sample(string.ascii_letters + string.digits, k=16))
+    return str.encode(owner_sig)
 
-        for val in self.full_song:
-            protected_wav_val = struct.pack('<h', val)
-            protected_wav.writeframesraw(protected_wav_val)
+def init_pad():
+    return struct.pack("=40s", str.encode(''))
 
-        protected_wav.close()
+def get_mp_key():
+    fileIn = open("device1/mipodKey", "rb")
+    mipod_key = fileIn.read()
+    fileIn.close()
+    return mipod_key
 
-    def read_song(self, path, metadata_frames=0):
-        """Reads a wave file
-        Args:
-            path (string): path to song
-            metadata_frames (int): if not 0 disregard this number of frames as metadata
-        Returns:
-            vals (array): integer array of decoded values
-            song (Wave Object): wave object associated with entered song
-        """
-        song = wave.open(os.path.abspath(path), 'r')
-        if metadata_frames:
-            song.readframes(metadata_frames)  # skip the metadata frames when assigning vals
-        vals = np.frombuffer(song.readframes(song.getnframes()), dtype=np.int16)
-        song.close()
-        return vals, song
+def get_owner_key(owner):
+    user = json.load(open(os.path.abspath("device1/provisioned_user.secrets")))
+    user_hash = user[owner]
+    user_hash = list(map(int, user_hash))
+    owner_key = bytearray(user_hash)
+
+    return owner_key
 
 
-def create_metadata(regions, user, user_secret_location, region_info):
-    """Returns a byte string formatted as follows:
-    METADATA_LENGTH(1B)/ownerID(1B)/REGION_LEN(1B)/USER_LEN(1B)/REGIONID1(1B)/REGIONID2 (1B)/.../opt. parity
-    Args:
-        regions (list): list of regions to provision song for
-        user (string): user name for owner of the song
-        user_secret_location (string): path to user secrets file
-        region_info (dict): mapping of regions provided by region_information.json
-    Returns:
-        metadata (bytes): bytes of encoded metadata
-    Example:
-        >>create_metadata(['USA', 'Canada'], 'user1', 'user_secrets.json', {'USA': 1, 'Canada':2})
-        'x06/x00/x01/x00/x01/x02'
-    """
-    user_secrets = json.load(open(os.path.abspath(user_secret_location)))
+class CreateDrmHeader(object):
+    # first_segment_size = struct.pack("=I", 0)
+    def __init__(self, path_to_song, regions, user, user_secret_location, region_info):
+        self.owner = self.get_owner_uid(user, user_secret_location)
+        self.regions_id = self.create_max_regions(region_info, regions)
+        self.wavdata = self.read_wav_header(path_to_song) 
+        self.len_250ms = self.find_len_250ms()
+        self.shared_users = self.init_shared_users()
 
-    # note: metadata must be an even length since each sample is 2B long
-    # and ARM processors require memory accesses to be aligned to the type size
-    metadata = struct.pack(
-        '=3B{regions_length}s{regions_len_2}s'.format(regions_length=len(regions), regions_len_2=len(regions) % 2),
-        int(user_secrets[user]['id']), len(regions), 0,
-        bytes([region_info[str(r)] for r in regions]),
-        b'\x00' if len(regions) % 2 else b'')
+    def get_owner_uid(self, user, user_secret_location):
+        user_secrets = json.load(open(os.path.abspath(user_secret_location)))
+        uid = int(user_secrets[user]['id'])
+        return struct.pack('=B', uid)
 
-    return bytes([len(metadata) + 1]) + metadata
+    def create_max_regions(self, region_info, regions):
+        rid = bytearray()
+        for i in regions:
+            rid = rid + struct.pack("=B", int(region_info[str(i)]))
+        for i in range(len(regions), 32):
+            rid = rid + struct.pack("=B", 0)
+        return rid
 
+    def read_wav_header(self, path):
+        # open file
+        file_name = os.path.abspath(path)
+        try:
+            fileIn = open(file_name,"rb")
+        except IOError as err:
+            print("Could not open song file %s" % file_name)
+            return
+        bufHeader = fileIn.read(44)
+
+        return bufHeader
+
+    # time = FileLength / (Sample Rate * Channels * Bits per sample /8)
+    def find_len_250ms(self):
+        wav= self.wavdata
+
+        BytePerSec=(struct.unpack("I",wav[28:32]))[0] # 'I' unsigned 32 bit integer
+        BytePer_250ms = (BytePerSec * 250) /1000 
+        return struct.pack("I", int(BytePer_250ms))
+
+    def init_shared_users(self):
+        shared_users = bytearray()
+        for i in range(0, 16):
+            shared_users = shared_users + struct.pack("=4s", str.encode(''))
+        return shared_users
+
+def write_header(outfile, drm_header):
+    global song_id, first_segment_size, mp_sig, owner_sig, nr_segments
+    file = open(outfile, "ab+")
+    file.write(song_id)
+    file.write(drm_header.owner)
+    file.write(struct.pack("=3s", str.encode('')))
+    file.write(drm_header.regions_id)
+    file.write(drm_header.len_250ms)
+    file.write(struct.pack('=I', nr_segments))
+    file.write(first_segment_size)
+    file.write(drm_header.wavdata)
+    file.write(mp_sig)
+    file.write(drm_header.shared_users)
+    file.write(owner_sig) 
+    file.close()   
+
+def get_sig(drm_header, owner):
+    global song_id, first_segment_size, nr_segments, mipod_key, mp_sig, owner_sig
+    msg1 = song_id + drm_header.owner + struct.pack("=3s", str.encode('')) + drm_header.regions_id + drm_header.len_250ms + struct.pack('=I', nr_segments) + first_segment_size + drm_header.wavdata
+
+    owner_key = get_owner_key(owner)
+
+    m = hmac.new(mipod_key, digestmod="sha512")
+    m.update(msg1)
+    mp_sig = m.digest()
+
+    msg2 = msg1 + mp_sig + drm_header.shared_users   
+    m = hmac.new(owner_key, digestmod="sha512")
+    m.update(msg2)
+    owner_sig = m.digest()
+
+class EncryptSong(object):
+    def __init__(self, path_to_song):
+        self.wav_size = 0
+        self.key = self.gen_key()
+        # nr_segments = (struct.unpack('=I', nr_segments))[0]
+        self.first_segment_size = str.encode("%04d" % int(16 * 1000 * 2))  # block size
+        self.encrypt_str = self.encrypt_song(path_to_song)
+        # define the segment_trailer
+        self.idx = struct.pack('=I', 0)
+        self.next_segment_size = struct.pack('=I', 0)
+        self.sig = init_sig()
+
+    def gen_key(self):
+        # if there is no aes.key file, genrate one
+        aes_key_file = "device1/aes.key"
+        if os.path.exists(aes_key_file):
+            key_file = open(aes_key_file, "rb")
+            aes_key = key_file.read()
+            key_file.close()
+        else:
+            aes_key = ("".join(random.choices(string.ascii_letters + string.digits, k=16))).encode()
+            key_file = open(aes_key_file, "wb")
+            key_file.write(aes_key)
+            key_file.close()
+        
+        # send key to the hardware
+        command = "./replace_AES_key.sh " + aes_key.hex()
+        os.system(command)
+        print("Finishing key initialization.")
+        return Transform(aes_key)
+
+    def create_song_segment_trailer(self, en_segment, idx, next_segment_size):
+        global mipod_key, song_id, pad, trail_header_size
+        # segment_trailer = bytearray()
+        self.idx = struct.pack('=I', idx)
+        if next_segment_size == 0:
+            self.next_segment_size = struct.pack('=I', 0)
+        else:
+            self.next_segment_size = struct.pack('=I', next_segment_size + trail_header_size)
+        msg = en_segment + song_id + self.idx + self.next_segment_size
+
+        m = hmac.new(mipod_key, digestmod="sha1")
+        m.update(msg)
+        segment_sig = m.digest() 
+        segment_trailer = msg + segment_sig + pad
+        
+        return segment_trailer
+
+    def encrypt_song(self, path):
+        # open file
+        global nr_segments, buffer_size
+        encrypt_song_str = bytearray()
+        file_name = os.path.abspath(path)
+        file_len = os.path.getsize(path)
+        try:
+            fileIn = open(file_name,"rb")
+        except IOError as err:
+            print("Could not open song file %s" % file_name)
+            return
+        wav_header = fileIn.read(44)
+        self.wav_size = (struct.unpack('I', wav_header[4:8]))[0] - 44 + 8
+
+        self.first_segment_size = buffer_size
+
+        p = int(self.wav_size / self.first_segment_size)
+        remainder = int(self.wav_size % self.first_segment_size)
+        fill_block_size = 128 - int(remainder % 128)
+        fill_block = bytearray(fill_block_size)
+        
+        segment_cipher = AES.new(self.key, AES.MODE_ECB)
+        segment_str = fileIn.read(self.first_segment_size)
+        segment_str = TransSeg(segment_str, len(segment_str))
+        encrypt_segment = segment_cipher.encrypt(segment_str)
+
+        while fileIn.tell() < file_len:
+            segment = fileIn.read(self.first_segment_size)
+            if len(segment) < self.first_segment_size:
+                segment = segment + fill_block
+            next_size = len(segment)
+            segment = TransSeg(segment, len(segment))
+            encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, next_size)
+            encrypt_segment = segment_cipher.encrypt(segment)    
+            nr_segments += 1    
+
+        encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, 0)
+        fileIn.close()  
+
+        return encrypt_song_str
+
+    def save_song(self, outfile):
+        fileOut = open(outfile, "ab+")
+        fileOut.write(self.encrypt_str)
+        fileOut.close
+
+buffer_size = 32000 # 16000*2
+trail_header_size = 84
+
+mp_sig = init_sig()
+owner_sig = init_sig()
+song_id = str.encode("".join(random.choices(string.digits, k=16)))
+first_segment_size = 0
+nr_segments = 0
+mipod_key = get_mp_key()
+pad = init_pad()
 
 def main():
     parser = ArgumentParser(description='main interface to protect songs')
@@ -95,14 +258,18 @@ def main():
     parser.add_argument('--user-secrets-path', help='File location for the user secrets file', required=True)
     args = parser.parse_args()
 
+    global first_segment_size, nr_segments, trail_header_size
     regions = json.load(open(os.path.abspath(args.region_secrets_path)))
-    try:
-        metadata = create_metadata(args.region_list, args.owner, args.user_secrets_path, regions)
-    except ValueError:
-        raise ValueError('Ensure all user IDs are integers and all regions are in the provided region_information.json')
-    protected_song = ProtectedSong(args.infile, metadata)
-    protected_song.save_secured_song_to_wave(args.outfile)
 
+    drm_header = CreateDrmHeader(args.infile, args.region_list, args.owner, args.user_secrets_path, regions) 
+    protect_song = EncryptSong(args.infile)
+    # The size of the first segment will be caculated when encrypt the song
+    
+    first_segment_size = struct.pack('=I', protect_song.first_segment_size + trail_header_size)
+    mp_sig = get_sig(drm_header, args.owner)
+    write_header(args.outfile, drm_header)
+    protect_song.save_song(args.outfile)
+    print("Finishing protect song.")
 
 if __name__ == '__main__':
     main()
