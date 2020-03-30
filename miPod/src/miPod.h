@@ -69,6 +69,7 @@ typedef struct __attribute__((__packed__)) {
 typedef struct __attribute__((__packed__)) { //sizeof() = 297
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
     uint8_t ownerID; //the owner's name.
+    uint8_t pad[3];
     uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
     //song metadata
     uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
@@ -79,7 +80,6 @@ typedef struct __attribute__((__packed__)) { //sizeof() = 297
     uint8_t mp_sig[HMAC_SIG_SIZE]; //a signature (using the mipod private key) for all preceeding data
     uint8_t shared_users[MAX_SHARED_USERS]; //users that the owner has shared the song with.
     uint8_t owner_sig[HMAC_SIG_SIZE]; //a signature (using the owner's private key) for all preceeding data. resets whenever new user is shared with.
-    uint8_t pad[3];
 } drm_header;
 
 struct segment_trailer {

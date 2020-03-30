@@ -176,14 +176,17 @@ void query_player() {
 }
 
 
+// queries the DRM about a song
 void query_song(char *song_name) {
+    // load the song into the shared buffer
     if (!load_file(song_name, &mipod_in->digital_data)) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
+
     send_command(MIPOD_QUERY_SONG);
-    while (mipod_in->status == MIPOD_STOP) continue;
-    while (mipod_in->status == STATE_WORKING) continue;
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
 }
 
 
@@ -198,30 +201,45 @@ void share_song(char *song_name, char *username) {
         print_help();
         return;
     }
+
+    // load the song into the shared buffer
     if (!load_file(song_name,(void*)&mipod_in->digital_data)) {
-        mp_printf("You have entered wrong file name!!!\r\n");
+        mp_printf("Failed to load song!\r\n");
         return;
     }
-    strncpy((char *)mipod_in->shared_user, username,UNAME_SIZE);
-    send_command(MIPOD_SHARE);
 
-    while (mipod_in->status == MIPOD_STOP) continue; 
-    while (mipod_in->status == STATE_WORKING) continue; 
+    strncpy((char *)mipod_in->shared_user, username,UNAME_SIZE);
+
+    // drive DRM
+    send_command(MIPOD_SHARE);
+    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start sorking
+    while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to share song
   
     if (mipod_in->status == STATE_FAILED) {
         mp_printf("Share rejected\r\n");
         return;
     }
-    fd = open(song_name, O_WRONLY);
-    if (fd == -1){
-        mp_printf("Failed to open the file. Share rejected \r\n");
+    // request was rejected if WAV length is 0
+    length = mipod_in->digital_data.wav_size;
+    if (length == 0) {
+        mp_printf("Invalid song. Share rejected\r\n");
         return;
     }
-    mp_printf("Sharing Song:  '%s' \r\n", song_name);
+    
+
+    // open output file
+    fd = open(song_name, O_WRONLY);
+    if (fd == -1){
+        mp_printf("Failed to open the file. Share rejected.\r\n");
+        return;
+    }
+
+    // write song dump to file
+    mp_printf("Writing song to file '%s' (%dB)\r\n", song_name, length);
     while (written < length) {
         wrote = write(fd, (char *)&mipod_in->digital_data.play_data.drm + written, length - written);
         if (wrote == -1) {
-            mp_printf("Failed to Sharing Song: %s \r\n",song_name);
+            mp_printf("Failed to share song: %s \r\n",song_name);
             return;
         }
         written += wrote;
@@ -280,14 +298,10 @@ int play_song(char *song_name) {
             usleep(200000); // wait for DRM to print
         } else if (!strcmp(ops, "stop")) {
             send_command(MIPOD_STOP);
-            usleep(200000); // wait for DRM to print
+            while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to start playing
             break;
         } else if (!strcmp(ops, "restart")) {
             send_command(MIPOD_RESTART);
-        } else if (!strcmp(ops, "exit")) {
-            mp_printf("Exiting...\r\n");
-            send_command(MIPOD_STOP);
-            return -1;
         } else if (!strcmp(ops, "rw")) {
             send_command(MIPOD_REWIND);
             usleep(200000); // wait for DRM to print
@@ -357,7 +371,6 @@ void digital_out(char *song_name) {
     mp_printf("Finished writing file\r\n");
 }
 
-
 //////////////////////// MAIN ////////////////////////
 
 
@@ -374,6 +387,7 @@ int main(int argc, char** argv)
         mp_printf("MMAP Failed! Error = %d\r\n", errno);
         return -1;
     }
+    memset(mipod_in, 0, sizeof(mipod_buffer));
     mp_printf("Command channel open at %p (%dB)\r\n", mipod_in, sizeof(mipod_buffer));
 
     // dump player information before command loop
