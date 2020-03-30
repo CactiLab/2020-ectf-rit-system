@@ -67,6 +67,14 @@ if {[catch {createhw -name $project_name -hwspec "$worksp/system_wrapper.hdf"} e
     puts "Already created the project hw"
 }
 
+puts "\n####### Updating Project hw Cora-Z7-07S ########\n"
+
+updatehw -hw Cora-Z7-07S -newhwspec "$worksp/$project_name/system.hdf"
+
+puts "\n####### Updating bsp ########\n"
+
+regenbsp -bsp drm_audio_fw_bsp
+
 puts "\n####### Building Microblaze ########\n"
 
 projects -clean
