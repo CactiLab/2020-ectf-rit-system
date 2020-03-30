@@ -219,13 +219,6 @@ void share_song(char *song_name, char *username) {
         mp_printf("Share rejected\r\n");
         return;
     }
-    // request was rejected if WAV length is 0
-    length = mipod_in->digital_data.wav_size;
-    if (length == 0) {
-        mp_printf("Invalid song. Share rejected\r\n");
-        return;
-    }
-    
 
     // open output file
     fd = open(song_name, O_WRONLY);
