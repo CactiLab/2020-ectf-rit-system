@@ -200,7 +200,7 @@ void query_song(char *song_name) {
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
 
     // print query results
-    mp_printf("Owner: %s", mipod_in->digital_data.play_data.drm.ownerID);
+   /* mp_printf("Owner: %s", mipod_in->digital_data.play_data.drm.ownerID);
     printf("\r\n");
 
     // mp_printf("regions: %s\r\n", mipod_in->digital_data.play_data.drm.regions[0]);
@@ -232,7 +232,7 @@ void query_song(char *song_name) {
             }     
         }
     }
-    printf("\r\n");
+    printf("\r\n");*/
 }
 
 

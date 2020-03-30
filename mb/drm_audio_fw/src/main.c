@@ -1326,20 +1326,43 @@ bool startup_query(void) {
 
 bool query_song(void) {
     char *name;
-    mb_printf("Starting queried player regions and users\r\n"); 
-    memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(drm_header)); 
-
-    // copy owner name
-
-    for (int i = 0; i < NUM_REGIONS; i++){
+    mb_printf("Starting queried player regions and users\r\n");  
+    memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(drm_header));
+    //memcpy((char *)mipod_in->query_data.owner_name, provisioned_users[mb_state.current_song_header.ownerID].name,UNAME_SIZE);
+    mb_printf("Song Owner: %s \r\n", provisioned_users[mb_state.current_song_header.ownerID].name);
+    rid_to_region_name(mb_state.current_song_header.regions[0], &name, false);
+	xil_printf("MB> Regions: %s", name);
+    for (int i = 1; i < NUM_REGIONS; i++){
         // char index = mipod_in->digital_data.play_data.drm.regions[i];
         // if( i > 0 && strcmp(index, 0))
         //     i = NUM_REGIONS;
-        rid_to_region_name((uint8_t)(mb_state.current_song_header.regions[i]), &name, false);
-        mb_debug("region name: ", name);
-        strncpy((char *)q_song_region_lookup(mipod_in->query_data, i), name, UNAME_SIZE);
-        mb_printf("regions: %s", q_song_region_lookup(mipod_in->query_data, i));
+    	if (mb_state.current_song_header.regions[i]) {
+        rid_to_region_name(mb_state.current_song_header.regions[i], &name, false);
+        //memcpy((char *)q_song_region_lookup(mipod_in->query_data, i),name,REGION_NAME_SZ);
+        //strncpy((char *)q_song_region_lookup(mipod_in->query_data, i), name, UNAME_SIZE);
+        xil_printf(", %s", name);
+    	}
     } 
+    mb_printf("Shared Users: ");
+    int count =0;
+    for (size_t j = 0; j < TOTAL_USERS; j++) {
+    	if (mb_state.current_song_header.shared_users[j] == 1) {
+    		count++;
+    		//memcpy((char *)q_user_lookup(mipod_in->query_data, j), provisioned_users[j].name, UNAME_SIZE);
+    		if (count==1) {
+    			xil_printf("%s ", provisioned_users[j].name);
+    		} else {
+    			xil_printf(", %s ", provisioned_users[j].name);
+    		}
+    	}
+        // char *user_tmp = provisioned_users[j].name;
+        // mb_printf("users_list: %s", q_user_lookup(mipod_in->query_data, i));
+    }
+    if (count==0) {
+    	xil_printf("No Shared Users");
+    }
+    xil_printf("\r\n");
+   // memcpy(&mipod_in->digital_data.play_data.drm, &mb_state.current_song_header,  sizeof(drm_header));
     return true;
 }
 
