@@ -80,12 +80,12 @@ size_t load_file(char *fname, mipod_digital_data *digital_data) {
 
     fd = open(fname, O_RDONLY);
     if (fd == -1){
-        mp_printf("Failed to open file! Error = %d\r\n", errno);
+        mp_printf("Song file does not exist!\r\n");
         return 0;
     }
 
     if (fstat(fd, &sb) == -1){
-        mp_printf("Failed to stat file! Error = %d\r\n", errno);
+        mp_printf("Failed to stat file!\r\n");
         return 0;
     }
 
@@ -94,11 +94,7 @@ size_t load_file(char *fname, mipod_digital_data *digital_data) {
         close(fd);
         return 0;
     }
-    // read(fd, &(digital_data->play_data), sb.st_size);
-    // mp_printf("owner: %s\r\n", digital_data->play_data.drm.owner);
-    // mp_printf("subchunk2_size: (%ld)\r\n", digital_data->play_data.drm.wavdata.chunk_size);
     digital_data->wav_size = digital_data->play_data.drm.wavdata.chunk_size - 44 + 8;
-    mp_printf("wav_size: (%ldB)\r\n", digital_data->wav_size);
     
     close(fd);
 
@@ -148,12 +144,8 @@ void logout() {
 void query_player() {
     // drive DRM
     send_command(MIPOD_QUERY);
-    // mp_printf("the mipod state: %d\r\n", mipod_in->status);
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
-    // mp_printf("the mipod state: %d\r\n", mipod_in->status);
-
-    // print query results
 
     mp_printf("Regions: %s", q_region_lookup(mipod_in->query_data, 0));
     if (mipod_in->query_data.users_list) {
@@ -173,9 +165,7 @@ void query_player() {
     if (mipod_in->query_data.users_list) {
         printf("%s", q_user_lookup(mipod_in->query_data, 0));
         for (int i = 1; i < MAX_SHARED_USERS; i++) {
-            // printf(", %X", q_user_lookup(mipod_in->query_data, i));
             if(strlen(q_user_lookup(mipod_in->query_data, i)) == 0){
-                // mp_printf("empty users list!\r\n");
                 i = MAX_SHARED_USERS;
                 break;
             }
@@ -198,41 +188,6 @@ void query_song(char *song_name) {
     send_command(MIPOD_QUERY_SONG);
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
-
-    // print query results
-   /* mp_printf("Owner: %s", mipod_in->digital_data.play_data.drm.ownerID);
-    printf("\r\n");
-
-    // mp_printf("regions: %s\r\n", mipod_in->digital_data.play_data.drm.regions[0]);
-    if(mipod_in->digital_data.play_data.drm.regions){
-        mp_printf("Regions: %s", q_song_region_lookup(mipod_in->query_data, 0));
-        for (int i = 1; i < MAX_SHARED_REGIONS; i++) {
-            // uint32_t region_tmp = q_song_region_lookup(mipod_in->query_data, i);
-            if (!(q_song_region_lookup(mipod_in->query_data, i)))
-            {
-                printf(", %s", q_song_region_lookup(mipod_in->query_data, i));
-            }   
-            else i = MAX_SHARED_REGIONS;   
-        }
-        printf("\r\n");
-    }
-    
-
-    mp_printf("Authorized users: ");
-    if (mipod_in->digital_data.play_data.drm.shared_users) {
-        // printf("%s", mipod_in->digital_data.play_data.drm.shared_users[0]);
-        for (int i = 0; i < MAX_SHARED_USERS; i++) {    
-            if (!(mipod_in->digital_data.play_data.drm.shared_users[i]))
-            {
-                printf(", %s", q_song_user_lookup(mipod_in->digital_data.play_data.drm, i));
-            }     
-            else {
-                printf("No shared users!\r\n");
-                i = MAX_SHARED_USERS; 
-            }     
-        }
-    }
-    printf("\r\n");*/
 }
 
 
@@ -253,20 +208,9 @@ void share_song(char *song_name, char *username) {
         mp_printf("Failed to load song!\r\n");
         return;
     }
-    
-   // strncpy((char *)mipod_in->share_data.target_name, username,UNAME_SIZE);
-   // mipod_in->share_data.drm = mipod_in->digital_data.play_data.drm;
-    //strncpy(mipod_in->share_data.drm, &mipod_in->digital_data.play_data.drm,sizeof(drm_header));
-    
-    /*mp_printf("brefore STRNCPY owner in mipodIn: %d\r\n", mipod_in->digital_data.play_data.drm.ownerID);
-    mp_printf("before STRNCPY subchunk2_size in mipodIn: (%ld)\r\n", mipod_in->digital_data.play_data.drm.wavdata.chunk_size);
-    mp_printf("before STRNCPY owner in share_data: %d\r\n",mipod_in->share_data.drm.ownerID);
-    mp_printf("before STRNCPY subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);*/
+
     strncpy((char *)mipod_in->shared_user, username,UNAME_SIZE);
-    /*mp_printf("owner in mipodIn: %d\r\n", mipod_in->digital_data.play_data.drm.ownerID);
-    mp_printf("subchunk2_size in mipodIn: (%ld)\r\n", mipod_in->digital_data.play_data.drm.wavdata.chunk_size);
-    mp_printf("owner in share_data: %d\r\n",mipod_in->share_data.drm.ownerID);
-    mp_printf("subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);*/
+
     // drive DRM
     send_command(MIPOD_SHARE);
     while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start sorking
@@ -277,17 +221,11 @@ void share_song(char *song_name, char *username) {
         return;
     }
     // request was rejected if WAV length is 0
-   /* length = mipod_in->digital_data.wav_size;
+    length = mipod_in->digital_data.wav_size;
     if (length == 0) {
         mp_printf("Share rejected\r\n");
         return;
-    }*/
-    //mipod_in->digital_data.play_data.drm = mipod_in->share_data.drm;
-    /*mp_printf("AFTER WRITTEN back owner in mipodIn: %d\r\n", mipod_in->digital_data.play_data.drm.ownerID);
-    mp_printf("AFTER WRITTEN back  subchunk2_size in mipodIn: (%ld)\r\n", mipod_in->digital_data.play_data.drm.wavdata.chunk_size);
-    mp_printf("AFTER WRITTEN back  owner in share_data: %d\r\n",mipod_in->share_data.drm.ownerID);
-    mp_printf("AFTER WRITTEN back subchunk2_size in share data: (%ld)\r\n", mipod_in->share_data.drm.wavdata.chunk_size);*/
-   // mp_printf("AFTER WRITTEN back Length %d\r\n", length);
+    }
     
 
     // open output file
@@ -501,3 +439,4 @@ int main(int argc, char** argv)
 
     return 0;
 }
+

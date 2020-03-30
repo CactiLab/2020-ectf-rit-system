@@ -9,22 +9,23 @@
 #define SRC_MIPOD_H_
 
 #include <stdint.h>
-#include "constants.h"
-
 
 #define TOTAL_USERS 64
+#define MAX_SONG_SZ (1<<25) //33554432 == 32 mib
 
+#define SONGID_LEN 16
+#define REGION_NAME_SZ 64
+#define UNAME_SIZE 16 //see: ectf requirements (it is actually 15, but each name is nul-padded to 16 for obvious reasons)
+#define PIN_SIZE 64 //see: ectf requirements
+#define MAX_SHARED_USERS 64 //see: ectf requirements, 3.3.5
+#define HMAC_SIG_SIZE 64
+
+#define MAX_SHARED_REGIONS 32
+#define REGION_NAME_SZ 64
+#define MAX_QUERY_REGIONS MAX_SHARED_REGIONS /*TOTAL_REGIONS*/
 
 // miPod constants
 #define USR_CMD_SZ 64
-
-// protocol constants. Defined at constants.h
-//#define MAX_REGIONS 64
-//#define REGION_NAME_SZ 64
-//#define MAX_USERS 64
-//#define USERNAME_SZ 64
-//#define MAX_PIN_SZ 64
-//#define MAX_SONG_SZ (1<<25)
 
 // printing utility
 #define MP_PROMPT "mP> "
@@ -62,10 +63,7 @@ typedef struct __attribute__((__packed__)) {
     //uint8_t data[]; //the actual song
 } wav_header;
 
-#define PCM_SUBCH1_SIZE 16 //subchunk1_size for PCM audio
-#define AUDIO_FMT_PCM 1 //audio_fmts
 
-#define SONGID_LEN 16
 
 // This is for drm metadata
 typedef struct __attribute__((__packed__)) { //sizeof() = 297
