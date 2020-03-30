@@ -295,7 +295,7 @@ returns true/false for if the user is OK or not.
 */
 bool gen_check_user_secret(uint32_t uid) {
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
-    pbkdf2_hmac_sha512(kb,KDF_OUTSIZE,mb_state.pin_buffer,sizeof(mb_state.pin_buffer),provisioned_users[uid].salt,sizeof(provisioned_users[uid].salt), 400);
+    pbkdf2_hmac_sha512(kb, KDF_OUTSIZE, mb_state.pin_buffer, sizeof(mb_state.pin_buffer), provisioned_users[uid].salt, sizeof(provisioned_users[uid].salt), 400);
 
     return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
 }
@@ -370,7 +370,6 @@ int32_t load_song_header(drm_header *arm_drm) {
     if (!verify_mp_blocksig(&mb_state.current_song_header, offsetof(drm_header, mp_sig))) {
         mb_printf("Invalid song!\r\n");
         clear_obj(mb_state.current_song_header);
-        TAMPER();
         return SONG_BADSIG;
     }
 
@@ -461,7 +460,6 @@ static bool load_song_segment(void *arm_start, size_t segsize, uint32_t segidx) 
        return true;
    }
    else {
-       TAMPER();
        mb_printf("Invalid song.\r\n");
        return false;
    }
@@ -651,7 +649,7 @@ bool startup_query(void) {
 
 bool query_song(void) {
     char *name = NULL;
-    int count =0;
+    int count = 0;
     memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(drm_header));
     mb_printf("Song Owner: %s \r\n", provisioned_users[mb_state.current_song_header.ownerID].name);
     rid_to_region_name(mb_state.current_song_header.regions[0], &name, false);
@@ -664,7 +662,7 @@ bool query_song(void) {
     } 
     mb_printf("Shared Users: ");
     for (size_t j = 0; j < TOTAL_USERS; j++) {
-    	if (mb_state.current_song_header.shared_users[j] == 1) {
+    	if (mb_state.current_song_header.shared_users[j]) {
     		count++;
     		if (count==1) {
     			xil_printf("%s ", provisioned_users[j].name);
@@ -673,7 +671,7 @@ bool query_song(void) {
     		}
     	}
     }
-    if (count == 0) {
+    if (!count) {
     	xil_printf("No Shared Users");
     }
     xil_printf("\r\n");

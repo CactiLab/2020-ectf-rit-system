@@ -94,17 +94,6 @@ checks to see if the shared user entry at <idx_> is in use.
 #define clear_obj(obj_) memset(&(obj_), 0, sizeof(obj_))
 #endif
 
-#ifdef USE_TAMPER
-noreturn void TAMPER(void) {
-#pragma message("need to write to the PL reset register and reset the system")
-    // *(uint32_t*)ADDRESS = 1; // <- resets the PL
-    __builtin_unreachable();
-}
-#else
-#define TAMPER() ((void)0)
-#endif // USE_TAMPER
-
-
 #define swap_bytes(a, b) {\
 	uint8_t tmp; \
 	tmp = *((uint8_t *)a); \
