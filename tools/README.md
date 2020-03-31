@@ -1,11 +1,9 @@
 
-# Project Build and File Creation Toolchain
+# Project Build and File Creation Toolchain (RIT design)
 
-The following set of tools provides an example that meets all eCTF functional requirements (although in an insecure way).  
-Note that several of the implementation details here are NOT required, but might be useful to keep around (e.g., the use of json format
-and the modular design of the buildDevice script)
+The following set of tools provides build scripts that meets all eCTF functional requirements (although in an insecure way).  
 
-## Insecure Example to Protect a Song
+## Protect a Song
 Here is an example of how to use these scripts together to define regions and users, and then protect a song.
 For more information and diagrams please see the rules document.
 
@@ -48,6 +46,9 @@ Args:
 - <USER_SECRETS_PATH>: The path to the user_secrets file created by the createUsers script.
 - <OUTPUT_FOLDER>: The path (relative or absolute) to store the any device related information required to build a device.
 
+Please note:
+* We trate the `device1` as a fixed output folder, and the files in this folder will be used when protecting the song.
+
 ### protectSong
 Syntax:
 > ./protectSong --region-list <REGION_LIST> --region-secrets-path <PATH_TO_REGION_INFORMATION> --infile <PATH_TO_SONG> --path-to-save-song <PATH_TO_OUTPUT_SONG> --owner <USER> --user-secrets-path <USER_SECRETS>
@@ -60,7 +61,9 @@ Args:
 - <USER> : The username that the song is owned by.
 - <USER_SECRETS> : The path to the user secrets file.
 
-*hint*: test your metadata addition with the metadata_read.py script
+Please note:
+
+* We redesigned the structure of the protect song, please check the design document to see the drm_header of the protect song.
 
 
 ### buildDevice
@@ -74,18 +77,24 @@ Args:
 - <BUILD_FLAG> : one of the modes defined above; the default will be to run [all] options
 - <SECRETS_DIR> : is a path to the directory containing "device_secrets" and other device files.
 
-Please note:
-* buildDevice (the bash script) passes args directly to the buildDevice.py script.
-  This is done to allow sourcing of the Vivado path, and is assumed to be under `/opt/path/etc/`,
-  based on the use of the provided Vagrant dev environment
-* Although it is possible to call the build_flag functions individually, all handling of
-  function input is handled in the main() of buildDevice.py.
-* You may wish to review any `tcl` scripts and modify them if you see fit:
-      `/dev/path/ectf/pl/proj/` : create_project.tcl, gen_bitstream.tcl
-      `/dev/path/ectf/tools/` :  build_microblaze.tcl, combine_bitstream.tcl
+Modification:
+* Modified `/dev/path/ectf/pl/proj/create_bd.tcl` and `/dev/path/ectf/pl/proj/gen_bitstream` to add the AES decryption to the design.
+* Modified the `tools/build_microblaze.tcl` to update the bsp project for new hardware design.
 
-*hint*: buildDevice will not work until after you run any necessary `create` scripts, including createDevice,
-which generates `device_secrets.h`
+### replace_AES_key.sh
+Syntax: 
+> ./replayce_AES_key.sh <hex_key_string>
+
+Please note:
+* This script is used by protectSong script to send the aes key to the hardware.
+* This script should run before create the vivado project.
+
+### clear_tmp
+Syntax:
+> ./clear_tmp
+
+Please note:
+* This script will delete the aes key which will be sent to hardware. Make sure run it after creating all protect songs.
 
 ### packageDevice
 Syntax:
