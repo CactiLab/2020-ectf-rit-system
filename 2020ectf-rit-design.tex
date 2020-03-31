@@ -32,97 +32,84 @@
 }
 
 
-\title{Secure Audio DRM: System Design}
-\author{Cacti}
+\title{Secure Audio DRM: System Design and Implementation}
+\author{Team Cacti\\Rochester Institute of Technology\\ 2020 MITRE eCTF}
 \date{}
 
 \begin{document}
 
 \maketitle
 
-\section{System Workflow and Overview}
-At a high level, our system encrypts songs and authenticates users to play the songs.
-In particular, we take the following steps to modify the insecure system.
+\section{Overview}
 
-\subsection{Application Design}
+This document presents the design and implementation of Team Cacti's submission to MITRE eCTF 2020.
+The goal of this project is to design a secure audio DRM system. For more information of the requirements, please refer to MITRE's `Challenge Description and Rules' document. 
+
+\section{System Modules}
+
+Team Cacti's submission has the following modules: 
 
 \begin{enumerate}
-    \item DRM Header design:
-    \begin{lstlisting}[language=C, label={lst:cache}, style=manual_code]
-struct wav_header {
-    char chunkID[4];
-    uint32_t chunk_size;
-    char format[4];
-    char subchunk1ID[4];
-    uint32_t subchunk1_size;
-    uint16_t audio_fmt;
-    uint16_t n_channels;
-    uint32_t samplerate;
-    uint32_t byterate;
-    uint16_t blk_align;
-    uint16_t bits_per_sample;
-    char subchunk2ID[4];
-    uint32_t subchunk2_size;
-};
-    \end{lstlisting}
-
-    \item The following information will be securely stored and generated at build-time:
-    \begin{itemize}
-        \item Encryption secret key (in-bitstream w/hardware AES)
-        \item Mipod public key
-        \item Per-user salts
-        \item Per-user public keys
-        \item Per-user verification tokens (ie hashes/signatures)
-    \end{itemize}
-
-    \item The following information will be discarded after the build process is completed: Mipod public key.
-
-    \item The following algorithms will be used:
-    \begin{itemize}
-        \item Hashing (KDF and signing) $\rightarrow$ SHA512;
-            \begin{itemize}
-                \item PBKDF2+sha512, resulting in 32-byte secret key.
-                \item This takes as inputs the (nul-padded if necessary) 64-byte pin and a pregenerated per-user 64-byte salt.
-            \end{itemize}
-        \item Signatures $\rightarrow$ EDDSA;
-        \item Encryption $\rightarrow$ AES-CBC with 128-bit keys
-    \end{itemize}
-
-    \item Communication:  Much like the reference implementation, communication will take place via gpio and shared buffers
-
-    \item Login process: client sends username+pin, fpga copies it locally and performs the kdf on the pin.
-    that is then used to compute a signature and checked against a known value success/failure is returned to the client.
-
-    \item Play process:
-    \begin{itemize}
-        \item Client sends the contents of a drm file to the fpga
-        \item Fpga copies the drm header and verifies its contents (good signature, song can be played for user/regions)
-        \item Fpga copies sections of the song to local memory
-        \item Each section is validated using the mipod public key
-        \item Each validated section is then decrypted and played
-        \item Should a section fail decryption or validation, the fpga stops playing the song
-    \end{itemize}
-
-    \item Share process:
-    \begin{itemize}
-        \item Client sends the drm header to the fpga
-        \item Fpga copies the contents locally
-        \item Fpga verifies its validity (good signature, owner is logged in)
-        \item Fpga checks the target user to ensure they exist on the local machine
-        \item Fpga adds the target user to and signs the drm share section
-        \item Fpga copies the drm header back to the client
-        \item Client writes the header to the file
-    \end{itemize}
-
-    \item Digitize process: same as play process, except data is written back to the shared buffer instead of played as audio
+	\item A Linux application (\verb|mipod|) that takes users' input, reads and writes to the SD card for protected music files. The Linux application runs on the Cortex-A CPU (\verb|cortex|). The application communicates with the firmware running on the MicroBlaze CPU mainly through the main memory (\verb|dram|).
+	This application is not in the trusted computing base, since the underlying Linux OS may be malicious.
+	\item The firmware (\verb|fw|) runs on the MicroBlaze CPU (\verb|mb|), which is a soft-core on the FPGA. Besides the \verb|dram|, \verb|fw| can also access the block RAM on the FPGA (\verb|bram|), which the \verb|cortex| cannot access.
+	\item An AES module implememented in the FPGA.
+	\item A suite of Python tools (\verb|ptools|) that is supposed to be run by MITRE in provisioning.
 \end{enumerate}
 
-% \subsection{Encryption Songs}
+In addition, we removed the MDM block that is the debug module of the MicroBlaze. 
+We also disabled the Ethernet 0 port and other unnecessary peripherals on the Zynq processor.
 
-\subsection{Hardware Design}
-We removed the MDM block, disabled the debug module on the MicroBlaze, and disabled the Ethernet 0 port and other unnecessary peripherals on the Zynq processor.
+\section{System Workflow}
 
-We have also created a hardware AES block which we can use to encrypt and decrypt parts of the songs as the application runs.
-The key for this will be coded directly into the hardware at the time which we generate the bitstream.
+At a very high level, our system works in the following steps: 
 
+\begin{enumerate}
+	\item During provisioning, the \verb|ptools| hashes users' PINs using \verb|PDKDF_SHA512|, generates a global encryption key \verb|k1| for AES encryption, generates a global key \verb|k2| for HMAC to protect music content integrity, generates a key \verb|ku| for each user. \verb|k1| is hardcoded into the FPGA AES module. \verb|k2| and \verb|ku|s only reside on \verb|bram| at runtime.
+	\item The \verb|ptools| will divide each music into multiple segments. Each segment is encrypted using \verb|k1|, SHA1-HMACed using \verb|k2|. A new music file is created and the header is SHA512-HMACed using each owner's \verb|ku|.
+	\item At runtime when a user tries to login, her input PIN will be copied from \verb|dram| to \verb|bram|. \verb|fw| compares the hash value.
+	\item When a user tries to play a song she owns, encrypted song segments are copied from \verb|dram| to \verb|bram|. Decryption and integrity check are performed on \verb|bram| when before they are played.
+	\item When a legit user shares a song to another user, a new header is constructed and HMAC generated using the ower's \verb|ku|. The header is then copied from \verb|bram| to \verb|dram|. \verb|mipod| then writes the new header to the protected music file. 
+	\item If the user is invalid or in a locked region, she can only play or digital out the first 30s of the music.
+	\item When playing the song, the operations provided are pause, resume, restart, stop, forward 5s, and rewind 5s.
+\end{enumerate}
+
+\section{Data Structures}
+
+\subsection{drm\_header}
+
+    \begin{lstlisting}[language=C, label={lst:cache}, style=manual_code]
+typedef struct __attribute__((__packed__)) {
+    uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
+    uint8_t ownerID; //the owner's name.
+    uint8_t pad[3];
+    uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
+    //song metadata
+    uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
+    uint32_t nr_segments; //the number of segments in the song
+    uint32_t first_segment_size; //the size of the first song segment (which may not be the full SEGMENT_BUF_SIZE), INcluding trailer.
+    wav_header wavdata;
+    //validation and sharing
+    uint8_t mp_sig[HMAC_SIG_SIZE]; //a signature (using the mipod private key) for all preceeding data
+    uint8_t shared_users[MAX_SHARED_USERS]; //users that the owner has shared the song with.
+    uint8_t owner_sig[HMAC_SIG_SIZE]; //a signature (using the owner's private key) for all preceeding data. resets whenever new user is shared with.
+} drm_header;
+    \end{lstlisting}
+
+\subsection{mipod\_buffer}
+
+    \begin{lstlisting}[language=C, label={lst:cache}, style=manual_code]
+typedef volatile struct __attribute__((__packed__)) {
+    uint32_t operation; //IN, the operation id from enum mipod_ops
+    uint32_t status; //OUT, the completion status of the command. DO NOT read this field.
+    char shared_user[UNAME_SIZE];
+    union {
+        mipod_login_data login_data;
+        mipod_query_data query_data;
+        mipod_digital_data digital_data;
+        char buf[MAX_SONG_SZ];
+    };
+}mipod_buffer;
+    \end{lstlisting}
+    
 \end{document}
