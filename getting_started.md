@@ -38,7 +38,7 @@ Please allocate enough time for this process and be sure the follow the steps in
 carefully.
 
 
-## Building the Reference Design
+## Building the RIT Design
 This section assumes that you have a Vagrant development
 environment running as described in the `vagrant` folder, and that you have read through all of the
 `README` files in each subdirectory.

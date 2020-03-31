@@ -39,6 +39,7 @@ void initialize_mb_State () {
 	mb_state.music_op = MIPOD_STOP;
 }
 
+// song play related operations
 static void pause_song(void);
 static void resume_song(void);
 static void stop_song(void);
@@ -54,8 +55,7 @@ static bool query_song(void);
 static bool digitize_song(void);
 static bool share_song(void);
 
-static bool clear_mipod(void);
-
+// interrupt handler
 void gpio_entry(void) {
     InterruptProcessed = true;
 }
@@ -89,8 +89,6 @@ int main() {
 
     // clear mipod_buffer channel
     memset((void *)mipod_in, 0, sizeof(mipod_buffer));
-
-    mb_printf("Audio DRM Module has Booted\r\n");
 
     // Handle commands forever
     while(1){
@@ -525,6 +523,8 @@ static bool play_song(void) {
         return XST_FAILURE;
     }
 
+    mb_printf("Audio DRM Module has Booted\r\n");
+
     switch (load_song_header(&mipod_in->digital_data.play_data.drm)) {
     case(SONG_BADUSER):;
     case(SONG_BADREGION):; //we can play 30s, but no more
@@ -607,13 +607,11 @@ restart_playing:;
 
         if (!load_song_segment(fseg, segsize, i)){
             if (i == 0) {
-                // mb_printf("Load song segment failed.\r\n");
                 unload_song_header();
                 return false;
             }
             else
             {
-                // mb_printf("Load song segment ends.\r\n");
                 return true;
             }
         }
@@ -791,11 +789,4 @@ bool share_song(void)
     fail:;
     unload_song_header();
     return rcode;
-}
-
-bool clear_mipod(void) {
-    clear_buffer(mipod_in);
-    clear_obj(mipod_in);
-    mipod_in->status = STATE_SUCCESS;
-    return true;
 }

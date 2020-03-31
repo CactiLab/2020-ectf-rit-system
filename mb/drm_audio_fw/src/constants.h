@@ -9,7 +9,7 @@
 
 // crypto
 #define PKEY_SIZE 64 //see: hmac keygen
-#define UNAME_SIZE 16 //see: ectf requirements (it is actually 15, but each name is nul-padded to 16 for obvious reasons)
+#define UNAME_SIZE 16 //see: ectf requirements
 #define SALT_SIZE 16 //see: common sense
 #define PIN_SIZE 64 //see: ectf requirement
 
@@ -100,7 +100,7 @@ checks to see if the shared user entry at <idx_> is in use.
 	*((uint8_t *)b) = tmp; \
 }
 
-//#ifndef Transpose
+// used for AES decryption
 #define Transpose(block) {\
         swap_bytes(block + 1, block + 4); \
         swap_bytes(block + 2, block + 8); \
@@ -109,7 +109,6 @@ checks to see if the shared user entry at <idx_> is in use.
         swap_bytes(block + 7, block + 13); \
         swap_bytes(block + 11, block + 14); \
 }
-//#endif
 
 enum mipod_ops {
     MIPOD_PLAY=0,
@@ -159,7 +158,7 @@ typedef struct __attribute__((__packed__)) { //sizeof() 297
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
     uint8_t ownerID; //the owner's name.
     uint8_t pad[3]; // alignmet
-    uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
+    uint8_t regions[MAX_SHARED_REGIONS];
     //song metadata
     uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
     uint32_t nr_segments; //the number of segments in the song
