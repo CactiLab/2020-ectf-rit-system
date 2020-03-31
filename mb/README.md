@@ -20,9 +20,9 @@ functions of the DRM as individual hardware modules connected to the
 MicroBlaze.
 
 The DRM waits idle until receiving an interrupt from the miPod driver. Once
-triggered, the DRM checks for the `cmd` field in the shared memory interpreted
-as a `cmd_channel` struct and executes the command. After the DRM is finished,
-it sets the state in the `cmd_channel` to STOPPED, signalling to the miPod
+triggered, the DRM checks for the `operation` field in the shared memory interpreted
+as a `mipod_buffer` struct and executes the command. After the DRM is finished,
+it sets the state in the `mipod_buffer` to STOPPED, signalling to the miPod
 driver that it has finished, and waits for another command.
 
 Most operations simply involve reading and/or modifying the song or query in the
@@ -31,7 +31,7 @@ the audio codec and wait for further playback commands (pause, resumes, stop,
 etc.) To play music, the DRM must write the samples to a FIFO and trigger the
 codec to begin playback. 
 
-The DRM keeps the login status in the `login_status` field. If a user is logged
+The DRM keeps the login status in the `login_data` field. If a user is logged
 in, then the username and PIN are stored in their respective fields. To attempt
 to log in, the miPod will place the username and PIN of the login attempt in
 those same fields.

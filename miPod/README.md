@@ -21,16 +21,16 @@ attacker with root privileges, and may not be considered safe.
 miPod drives the DRM (implemented as a program running on a soft core
 MicroBlaze processor in the PL) through shared memory and the GPIO
 interrupt. The shared buffer is mapped into memory, and then interpreted as a
-`cmd_channel` struct, which contains fields for exchanging common information,
-and a buffer for all other data. A command is sent by setting the `cmd` field
-to the desired command, filling the `buf` field with necessary infromation, and
+`mipod_buffer` struct, which contains fields for exchanging common information,
+and a buffer for all other data. A command is sent by setting the `operation` field
+to the desired command, filling the `union` field with necessary infromation, and
 triggering an interrupt to the MicroBlaze. While the MicroBlaze is working,
-miPod can follow its state through the `drm_state` field.
+miPod can follow its state through the `status` field.
 
-The shared buffer in `cmd_channel` may be interpreted as either a `song` or a
-`query`, each mapping their respective metadata and data over the buffer.
+The shared buffer in `mipod_buffer` may be interpreted as either a `digital_data` or a
+`query_data`, each mapping their respective metadata and data over the buffer.
 
-The DRM keeps the login status in the `login_status` field. If a user is logged
+The DRM keeps the login status in the `login_data` field. If a user is logged
 in, then the username and PIN are stored in their respective fields. To attempt
 to log in, the miPod will place the username and PIN of the login attempt in
 those same fields.
