@@ -87,14 +87,14 @@ Syntax:
 
 Please note:
 * This script is used by protectSong script to send the aes key to the hardware.
-* This script should run before create the vivado project.
+* This script should run before creating the vivado project.
 
 ### clear_tmp
 Syntax:
 > ./clear_tmp
 
 Please note:
-* This script will delete the aes key which will be sent to hardware. Make sure run it after creating all protect songs.
+* This script will delete the aes key which will be sent to hardware. Make sure to run it after creating all protect songs.
 
 ### packageDevice
 Syntax:
