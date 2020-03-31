@@ -33,9 +33,8 @@
 
 // song stuffs
 #define MAX_SONG_SZ (1<<25) //33554432 == 32 mib
-#define SEGMENT_BUF_SIZE 32000 //32000+128 KB
+#define SEGMENT_BUF_SIZE 32000 //32000 + 128 KB
 #define CHUNK_SZ 16000
-#define SEGMENT_SONG_SIZE (SEGMENT_BUF_SIZE - sizeof(struct segment_trailer))
 #define SONGLEN_30S (mb_state.current_song_header.len_250ms * 4 * 30)
 #define SONGLEN_5S (mb_state.current_song_header.len_250ms * 4 * 5)
 
@@ -156,10 +155,10 @@ typedef struct __attribute__((__packed__)) {
     uint32_t subchunk2_size; //number of data bytes
 } wav_header;
 
-typedef struct __attribute__((__packed__)) { //sizeof() 129  = 1368
+typedef struct __attribute__((__packed__)) { //sizeof() 297
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
     uint8_t ownerID; //the owner's name.
-    uint8_t pad[3];
+    uint8_t pad[3]; // alignmet
     uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
     //song metadata
     uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
@@ -184,11 +183,11 @@ typedef struct {
     uint8_t music_op;
 } internal_state;
 
-struct segment_trailer {  //128 - 44 = 84
+struct segment_trailer {  //sizeof() 84
     uint8_t id[SONGID_LEN]; //16
     uint32_t idx;           //4
     uint32_t next_segment_size; //4
-    uint8_t sig[SHA1_DIGEST_SIZE]; //20 64-20=44
+    uint8_t sig[SHA1_DIGEST_SIZE]; //20
     char _pad_[40]; //do not use this. for cryptographic padding purposes only. //40
 };
 
