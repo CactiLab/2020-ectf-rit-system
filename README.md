@@ -1,10 +1,9 @@
-# 2020 MITRE Collegiate eCTF RIT System
+# 2020 eCTF RIT System
 
 This repository contains the RIT system for MITRE's 2020 [Embedded System CTF](http://mitrecyberacademy.org/competitions/embedded/). The original insecure reference system developed by MITRE can be found at [MITRE Insecure Reference](https://github.com/mitre-cyber-academy/2020-ectf-insecure-example).
-Use this code at your own risk!
 
 ## Getting Started
-Please see the [Getting Started Guide](getting_started.md). Please see the [RIT Design](rit_design.md) for the design and implementation details of our system.
+Please see the [Getting Started Guide](getting_started.md). Please see the [RIT Design](2020ectf-rit-design.pdf) for the design and implementation details of our system.
 
 ## Project structure
 The example code is structured as follows
