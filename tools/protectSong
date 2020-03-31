@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """
-Description: Hash the encryt song with mipod_sig then store back to the tail.
+Description: 
+1. Encrypt the song with aes128-ecb,
+2. Do hmac-sha1 for the encryt song with mipod_key
+3. Store back with the trailer.
 Use: Once per song
 Usage:
-./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile ../global_provisioning/audio/swan44k.drm --infile swan44k.wav --owner "misha" --user-secrets-path user.secrets
-./sig_song_segment.py --region-list "United States" "Japan" "Australia" --region-secrets-path region.secrets --outfile test.drm --infile Sound-Bite_One-Small-Step.wav --owner "misha" --user-secrets-path user.secrets
+./protectSong --region-list "United States" --region-secrets-path global_provisioning/region.secrets --outfile global_provisioning/audio/swan.drm --infile ../sample-audio/swan.wav --owner "misha" --user-secrets-path global_provisioning/user.secrets
 output: encrypted song
 """
 
@@ -155,7 +157,7 @@ class EncryptSong(object):
         self.sig = init_sig()
 
     def gen_key(self):
-        # if there is no aes.key file, genrate one
+        # if there is no aes.key file, generate one
         aes_key_file = "device1/aes.key"
         if os.path.exists(aes_key_file):
             key_file = open(aes_key_file, "rb")
@@ -241,7 +243,7 @@ trail_header_size = 84
 
 mp_sig = init_sig()
 owner_sig = init_sig()
-song_id = str.encode("".join(random.choices(string.digits, k=16)))
+song_id = str.encode("".join(random.choices(string.digits, k=16))) # per song per random id
 first_segment_size = 0
 nr_segments = 0
 mipod_key = get_mp_key()
