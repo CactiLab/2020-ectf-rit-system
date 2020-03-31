@@ -6,7 +6,8 @@ Use: Once per user
 
 import json
 from argparse import ArgumentParser
-
+import os
+import hashlib
 
 def main(user_list, outfile):
     """writes user secrets to json file
@@ -18,9 +19,15 @@ def main(user_list, outfile):
     except Exception as e:
         print("Unable to open secrets file: %s" % (e,))
         return 0
-
+    hashMap = {}
+    saltMap = {}
+    for user in user_list:
+        perSalt = os.urandom(16)
+        saltMap[user.split(":")[0]] = perSalt
+        userKey = hashlib.pbkdf2_hmac('sha512', str.encode(user.split(":")[1]), perSalt, 400)
+        hashMap[user.split(":")[0]] = userKey
     try:
-        user_dict = {user.split(":")[0]: {"pin": user.split(":")[1], "id": num} for num, user in enumerate(user_list)}
+        user_dict = {user.split(":")[0]: {"id": num, "salt": ", ".join([ str(uSaltByte)  for uSaltByte in saltMap[user.split(":")[0]]]), "hash": ", ".join([ str(uHash)  for uHash in hashMap[user.split(":")[0]]])} for num, user in enumerate(user_list)}
     except IndexError:
         raise Exception(
             "Unable to parse user name and pin. Please make sure you entered the user-list as "
