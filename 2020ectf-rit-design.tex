@@ -80,14 +80,14 @@ At a very high level, our system works in the following steps:
 
     \begin{lstlisting}[language=C, label={lst:cache}, style=manual_code]
 typedef struct __attribute__((__packed__)) {
-    uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
+    uint8_t song_id[SONGID_LEN]; //a per-song unique ID.
     uint8_t ownerID; //the owner's name.
     uint8_t pad[3];
     uint8_t regions[MAX_SHARED_REGIONS];
     //song metadata
-    uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
+    uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take.
     uint32_t nr_segments; //the number of segments in the song
-    uint32_t first_segment_size; //the size of the first song segment (which may not be the full SEGMENT_BUF_SIZE), INcluding trailer.
+    uint32_t first_segment_size; //the size of the first song segment including trailer.
     wav_header wavdata;
     //validation and sharing
     uint8_t mp_sig[HMAC_SIG_SIZE]; //a signature (using the mipod private key) for all preceeding data
@@ -101,7 +101,7 @@ typedef struct __attribute__((__packed__)) {
     \begin{lstlisting}[language=C, label={lst:cache}, style=manual_code]
 typedef volatile struct __attribute__((__packed__)) {
     uint32_t operation; //IN, the operation id from enum mipod_ops
-    uint32_t status; //OUT, the completion status of the command. DO NOT read this field.
+    uint32_t status; //OUT, the completion status of the command. 
     char shared_user[UNAME_SIZE];
     union {
         mipod_login_data login_data;
