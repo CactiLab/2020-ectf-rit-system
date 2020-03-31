@@ -52,21 +52,20 @@ To build the reference design for the first time, follow these steps:
 5.  Run `./createMipodSecrets --outfile global_provisioning/mipod.secrets` script to create the mipod secrets for protecting song.
 6.  Run `./createRegions --region-list "United States" "Japan" "Australia" --outfile global_provisioning/region.secrets` script to create the geographical regions (USA, Japan, and Australia in this case)
 7.  Run `./createUsers --user-list "drew:1234567890" "ben:00000000" "misha:0987654321" --outfile global_provisioning/user.secrets` script to create the 3 users ("drew", "ben" and "misha") with their pins, salt, and hmac-sha512 hash.
-8.  Run `./createDevice --region-list "United States" "Japan" --region-secrets-path global_provisioning/region.secrets --user-list "drew" "ben" "misha" --user-secrets-path global_provisioning/user.secrets --device-dir device1`. This will create a device for the "United States" and "Japan" regions and provision the device for "drew", "ben", and "misha", allowing each of them to log in. Any output files will be put into the "device1" directory. **ATTENTION**
-: We fixed the "device1" name, please do not change the name, or else the following steps will get errors.
-1.  Run `./protectSong --region-list "United States" --region-secrets-path global_provisioning/region.secrets --mipod-secrets-path global_provisioning/mipod.secrets --outfile global_provisioning/audio/swan.drm --infile ../sample-audio/swan.wav --owner "misha" --user-secrets-path global_provisioning/user.secrets` to provision a song for the United States region, with "drew" as an owner, use the `mipod.secrets` to protect the song. This script will genearte an `aes.key` file for the first time which will be sent to hardware. **ATTENTION**: Per device will have the same `aes.key`. Per team will have a unique `aes.key`.
-2.  Run the device by running `./buildDevice -p ../ -n rit_pl_proj -bf all -secrets_dir device1` (note that this takes a long time to run the first time you run it! Please be patient.) This will create a Vivado project called `rit_pl_proj` and use the `device1` secrets directory.
-3.  Run `./packageDevice ../boot-image/template.bif device1/miPod.bin ../mb/Cora-Z7-07S/download.bit` to create a `miPod.BIN` file with your bitstream.
-4.  Insert the SD card into the SD card reader, and insert that into your laptop.
+8.  Run `./protectSong --region-list "United States" --region-secrets-path global_provisioning/region.secrets --mipod-secrets-path global_provisioning/mipod.secrets --outfile global_provisioning/audio/swan.drm --infile ../sample-audio/swan.wav --owner "misha" --user-secrets-path global_provisioning/user.secrets` to provision a song for the United States region, with "drew" as an owner, use the `mipod.secrets` to protect the song. This script will genearte an `aes.key` file for the first time which will be sent to hardware. **ATTENTION**: Per team for protecting songs will have the same `aes.key`. Per team will have a unique `aes.key`.
+9.  Run `./createDevice --region-list "United States" "Japan" --region-secrets-path global_provisioning/region.secrets --user-list "drew" "ben" "misha" --user-secrets-path global_provisioning/user.secrets --mipod-secrets-path global_provisioning/mipod.secrets --device-dir device1`. This will create a device for the "United States" and "Japan" regions and provision the device for "drew", "ben", and "misha", allowing each of them to log in. Any output files will be put into the "device1" directory.
+10. Run the device by running `./buildDevice -p ../ -n rit_pl_proj -bf all -secrets_dir device1` (note that this takes a long time to run the first time you run it! Please be patient.) This will create a Vivado project called `rit_pl_proj` and use the `device1` secrets directory.
+11. Run `./packageDevice ../boot-image/template.bif device1/miPod.bin ../mb/Cora-Z7-07S/download.bit` to create a `miPod.BIN` file with your bitstream.
+12. Insert the SD card into the SD card reader, and insert that into your laptop.
     Ensure that this is passed through to the VM through the VirtualBox USB options
-5.  Run the `./deployDevice /dev/sdb ../BOOT.BIN global_provisioning/audio/ ../mb/miPod/Debug/miPod ../boot-image/image.ub --mipod-bin-path device1/miPod.bin` script.
-6.  Remove the SD card and place it into the board.
-7.  Ensure that the jumper is connecting both pins of JP2 (this allows the device to boot from the SD card)
-8.  Connect the Cora board to the computer. Ensure that the board (Digilent Adept USB Device) is passed through to the VM.
-9.  See the **Accessing UART From Inside the VM** section of the [Vagrant README](vagrant/README.md) file to start minicom.
-10. Press the `RESET` button on the board to reset it. You should now see the board boot and enter a Linux shell.
-11. `cd` to the `music` folder.
-12. Run the `./miPod` application, and run `help` to see a list of all possible commands.
+13. Run the `./deployDevice /dev/sdb ../BOOT.BIN global_provisioning/audio/ ../mb/miPod/Debug/miPod ../boot-image/image.ub --mipod-bin-path device1/miPod.bin` script.
+14. Remove the SD card and place it into the board.
+15. Ensure that the jumper is connecting both pins of JP2 (this allows the device to boot from the SD card)
+16. Connect the Cora board to the computer. Ensure that the board (Digilent Adept USB Device) is passed through to the VM.
+17. See the **Accessing UART From Inside the VM** section of the [Vagrant README](vagrant/README.md) file to start minicom.
+18. Press the `RESET` button on the board to reset it. You should now see the board boot and enter a Linux shell.
+19. `cd` to the `music` folder.
+20. Run the `./miPod` application, and run `help` to see a list of all possible commands.
 
 
 ## Working With the Xilinx Tools
