@@ -6,7 +6,7 @@ Description:
 3. Store back with the trailer.
 Use: Once per song
 Usage:
-./protectSong --region-list "United States" --region-secrets-path global_provisioning/region.secrets --outfile global_provisioning/audio/swan.drm --infile ../sample-audio/swan.wav --owner "misha" --user-secrets-path global_provisioning/user.secrets
+./protectSong --region-list "United States" --region-secrets-path global_provisioning/region.secrets --outfile global_provisioning/audio/swan.drm --infile ../sample-audio/swan.wav --owner "misha" --user-secrets-path global_provisioning/user.secrets --device-dir device1
 output: encrypted song
 """
 
@@ -50,14 +50,16 @@ def init_sig():
 def init_pad():
     return struct.pack("=40s", str.encode(''))
 
-def get_mp_key():
-    fileIn = open("device1/mipodKey", "rb")
+def get_mp_key(path_to_device):
+    path_to_mipoKey = path_to_device + '/mipodKey'
+    fileIn = open(path_to_mipoKey, "rb")
     mipod_key = fileIn.read()
     fileIn.close()
     return mipod_key
 
-def get_owner_key(owner):
-    user = json.load(open(os.path.abspath("device1/provisioned_user.secrets")))
+def get_owner_key(owner, path_to_device):
+    path_to_user_secrets = path_to_device + '/provisioned_user.secrets'
+    user = json.load(open(os.path.abspath(path_to_user_secrets)))
     user_hash = user[owner]
     user_hash = list(map(int, user_hash))
     owner_key = bytearray(user_hash)
@@ -129,11 +131,11 @@ def write_header(outfile, drm_header):
     file.write(owner_sig) 
     file.close()   
 
-def get_sig(drm_header, owner):
+def get_sig(drm_header, owner, path_to_device):
     global song_id, first_segment_size, nr_segments, mipod_key, mp_sig, owner_sig
     msg1 = song_id + drm_header.owner + struct.pack("=3s", str.encode('')) + drm_header.regions_id + drm_header.len_250ms + struct.pack('=I', nr_segments) + first_segment_size + drm_header.wavdata
 
-    owner_key = get_owner_key(owner)
+    owner_key = get_owner_key(owner, path_to_device)
 
     m = hmac.new(mipod_key, digestmod="sha512")
     m.update(msg1)
@@ -145,9 +147,9 @@ def get_sig(drm_header, owner):
     owner_sig = m.digest()
 
 class EncryptSong(object):
-    def __init__(self, path_to_song):
+    def __init__(self, path_to_song, path_to_device):
         self.wav_size = 0
-        self.key = self.gen_key()
+        self.key = self.gen_key(path_to_device)
         # nr_segments = (struct.unpack('=I', nr_segments))[0]
         self.first_segment_size = str.encode("%04d" % int(16 * 1000 * 2))  # block size
         self.encrypt_str = self.encrypt_song(path_to_song)
@@ -156,9 +158,10 @@ class EncryptSong(object):
         self.next_segment_size = struct.pack('=I', 0)
         self.sig = init_sig()
 
-    def gen_key(self):
+    def gen_key(self, path_to_device):
         # if there is no aes.key file, generate one
-        aes_key_file = "device1/aes.key"
+        path_to_aes_key = path_to_device + '/aes.key'
+        aes_key_file = path_to_aes_key
         if os.path.exists(aes_key_file):
             key_file = open(aes_key_file, "rb")
             aes_key = key_file.read()
@@ -246,7 +249,7 @@ owner_sig = init_sig()
 song_id = str.encode("".join(random.choices(string.digits, k=16))) # per song per random id
 first_segment_size = 0
 nr_segments = 0
-mipod_key = get_mp_key()
+mipod_key = bytearray()
 pad = init_pad()
 
 def main():
@@ -258,17 +261,19 @@ def main():
     parser.add_argument('--infile', help='path to unprotected song', required=True)
     parser.add_argument('--owner', help='owner of song', required=True)
     parser.add_argument('--user-secrets-path', help='File location for the user secrets file', required=True)
+    parser.add_argument('--device-dir', help='Path to output any required information for the device.',
+                        required=True)
     args = parser.parse_args()
 
-    global first_segment_size, nr_segments, trail_header_size
+    global first_segment_size, nr_segments, trail_header_size, mipod_key
     regions = json.load(open(os.path.abspath(args.region_secrets_path)))
 
     drm_header = CreateDrmHeader(args.infile, args.region_list, args.owner, args.user_secrets_path, regions) 
-    protect_song = EncryptSong(args.infile)
+    protect_song = EncryptSong(args.infile, args.device_dir)
     # The size of the first segment will be caculated when encrypt the song
     
     first_segment_size = struct.pack('=I', protect_song.first_segment_size + trail_header_size)
-    mp_sig = get_sig(drm_header, args.owner)
+    mp_sig = get_sig(drm_header, args.owner, args.device_dir)
     write_header(args.outfile, drm_header)
     protect_song.save_song(args.outfile)
     print("Finishing protect song.")
