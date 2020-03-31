@@ -83,7 +83,7 @@ typedef struct __attribute__((__packed__)) {
     uint8_t song_id[SONGID_LEN]; //size should be macroized. a per-song unique ID.
     uint8_t ownerID; //the owner's name.
     uint8_t pad[3];
-    uint8_t regions[MAX_SHARED_REGIONS]; //this is a bit on the large size, but disk is cheap so who cares
+    uint8_t regions[MAX_SHARED_REGIONS];
     //song metadata
     uint32_t len_250ms; //the length, in bytes, that playing 250 milliseconds of audio will take. (the polling interval while playing).
     uint32_t nr_segments; //the number of segments in the song
