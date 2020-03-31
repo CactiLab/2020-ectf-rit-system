@@ -10,7 +10,7 @@ from argparse import ArgumentParser
 import hashlib
 
 
-def main(region_names, user_names, user_secrets, region_secrets, device_dir):
+def main(region_names, user_names, user_secrets, mipod_secrets, region_secrets, device_dir):
     file_name = "device_secrets"
     if os.path.exists(device_dir):
         shutil.rmtree(device_dir)
@@ -34,8 +34,6 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
         print("Unable to create secrets file: {e} "
               "Please ensure all regions entered are in the list: {user_secrets}".format(e=e, user_secrets=user_secrets.keys()))
         return
-
-
     try:
         uids = [str(user_secrets[u]['id']) for u in usernames]
     except Exception as e:
@@ -43,45 +41,6 @@ def main(region_names, user_names, user_secrets, region_secrets, device_dir):
               "Please ensure all regions entered are in the list: {user_secrets}".format(e=e, user_secrets=user_secrets.keys()))
         return
 
-    hasMap = {}
-    slatMap = {}
-    mipodKey = os.urandom(64)
-    mipodSlat = os.urandom(16)
-
-    try:
-        mipodKeyFile = open(os.path.join(device_dir, "mipodKey"), "wb")
-    except Exception as e:
-        print("Unable to open secrets file: {e}".format(e=e))
-        return
-    try:
-        provisioned_userFile = open(os.path.join(
-            device_dir, "provisioned_user.secrets"), "w")
-    except Exception as e:
-        print("Unable to open secrets file: {e}".format(e=e))
-        return
-
-    mipodKeyFile.write(mipodKey)
-
-    s = "{\n"
-
-    for u in user_names:
-        perSalt = os.urandom(16)
-        slatMap[u] = perSalt
-        hashValue = hashlib.pbkdf2_hmac('sha512', str.encode(user_secrets[u]['pin']), perSalt, 400)
-        hasMap[u] = hashValue
-    counter = 0
-    for u in user_names:
-        s = s + '"'+u+'":\n['
-        s = s + ",".join([str(userHash) for userHash in hasMap[u]])
-        counter = counter + 1
-        if counter == len(user_names):
-            s = s + ']\n'
-        else:
-            s = s + '],\n'
-    s = s+"}"
-    provisioned_userFile.write(f'''
-    {s}
-''')
     device_secrets.write(f'''
 #pragma once
 #ifndef SECRETS_H
@@ -95,10 +54,9 @@ struct user {{
     const uint8_t salt[SALT_SIZE]; 
     const uint8_t hash[PKEY_SIZE]; 
 }}; 
-static const uint8_t mipod_key[PKEY_SIZE] = {{{", ".join([  str(keyByte)  for keyByte in mipodKey])} }}; //public signing key for the firmware size 64
-static const uint8_t mipod_salt[SALT_SIZE] ={{{", ".join([  str(saltByte) for saltByte in mipodSlat])} }}; //public slat  for the firmware size 16
-static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{'+ ", ".join([ str(uSaltByte)  for uSaltByte in slatMap[u]])+'}'+','+ '{'+", ".join([ str(uHashByte)  for uHashByte in hasMap[u]])+'}'+'}' for u in user_names])} }};
 static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join(rids)} }};
+static const uint8_t mipod_key[PKEY_SIZE] = {{{mipod_secrets["mipod_key"]} }}; //public signing key for the firmware size 64
+static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{' + user_secrets[u]["salt"]+'}'+','+ '{'+user_secrets[u]["hash"]+'}'+'}' for u in user_names])} }};
 const uint32_t REGION_IDS[] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
 const char *REGION_NAMES[] = {{ {", ".join(['"' + r + '"' for r in region_secrets])} }};
 #endif // SECRETS_H
@@ -115,15 +73,18 @@ def get_args():
                         nargs='+', required=True)
     parser.add_argument('--user-secrets-path', help='Path to user secrets file generated in createUsers.py',
                         required=True)
+    parser.add_argument('--mipod-secrets-path', help='Path to mipod secrets file generated in createUsers.py',
+                        required=True)
     parser.add_argument('--device-dir', help='Path to output any required information for the device.',
                         required=True)
     args = parser.parse_args()
-    return args.region_list, args.region_secrets_path, args.user_list, args.user_secrets_path, args.device_dir
+    return args.region_list, args.region_secrets_path, args.user_list, args.user_secrets_path, args.mipod_secrets_path,  args.device_dir
 
 
 if __name__ == '__main__':
-    region_names, region_secrets, usernames, user_secrets, device_dir = get_args()
+    region_names, region_secrets, usernames, user_secrets, mipod_secrets, device_dir = get_args()
     print("generating device specific secrets")
     user_secrets = json.load(open(os.path.abspath(user_secrets)))
     region_secrets = json.load(open(os.path.abspath(region_secrets)))
-    main(region_names, usernames, user_secrets, region_secrets, device_dir)
+    mipod_secrets = json.load(open(os.path.abspath(mipod_secrets)))
+    main(region_names, usernames, user_secrets, mipod_secrets, region_secrets, device_dir)
