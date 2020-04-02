@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Description: Creates user specific secrets
+Usage: ./createUsers --user-list "drew:1234567890" "ben:00000000" "misha:0987654321" --outfile global_provisioning/user.secrets --mipod-secrets global_provisioning/mipod.secrets
 Use: Once per user
 """
 
@@ -9,7 +10,31 @@ from argparse import ArgumentParser
 import os
 import hashlib
 
-def main(user_list, outfile):
+def mipod_secrets(outfile):
+    """writes user secrets to json file
+    args:
+        outfile (string): name of file to write mipod_secrets to """
+    try:
+        secrets = open(outfile, "w")
+    except Exception as e:
+        print("Unable to open secrets file: %s" % (e,))
+        return 0
+
+    mipodKey = os.urandom(64)
+
+    try:
+        mipod_secrets = {"mipod_key": ", ".join([  str(keyByte)  for keyByte in mipodKey])}
+    except IndexError:
+        raise Exception(
+            "Unable to parse user name and pin. Please make sure you entered the user-list as "
+            "space seperated pairs of usernames and pins. Example: --user-list user1:12345678 user2:12345689")
+    print(mipod_secrets)
+    info = json.dumps(mipod_secrets)
+    # print(type(info))
+    secrets.write(info)
+    secrets.close()
+
+def main(user_list, outfile, mopod_secrets_path):
     """writes user secrets to json file
     args:
         users_ (string): string of users and pins seperated by colons e.g. user1:123456789
@@ -35,6 +60,7 @@ def main(user_list, outfile):
     info = json.dumps(user_dict)
     secrets.write(info)
     secrets.close()
+    mipod_secrets(mopod_secrets_path)
 
 
 def get_args():
@@ -44,11 +70,12 @@ def get_args():
                         help='list of users and pins seperated by a colon: "user1:12345678 user2:12345679" ',
                         required=True)
     parser.add_argument('--outfile', help='location to save user secrets file', required=True)
+    parser.add_argument('--mipod-secrets', help='location to save user secrets file', required=True)
     args = parser.parse_args()
-    return args.user_list, args.outfile
+    return args.user_list, args.outfile, args.mipod_secrets
 
 
 if __name__ == '__main__':
-    users, loc = get_args()
+    users, loc, mopod_secrets_path = get_args()
     print("generating user specific secrets")
-    main(users, loc)
+    main(users, loc, mopod_secrets_path)

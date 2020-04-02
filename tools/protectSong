@@ -116,7 +116,7 @@ class CreateDrmHeader(object):
 
 def write_header(outfile, drm_header):
     global song_id, first_segment_size, mp_sig, owner_sig, nr_segments
-    file = open(outfile, "ab")
+    file = open(outfile, "wb")
     file.write(song_id)
     file.write(drm_header.owner)
     file.write(struct.pack("=3s", str.encode('')))
