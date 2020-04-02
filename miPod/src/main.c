@@ -120,7 +120,7 @@ void login(char *username, char *pin) {
     strncpy((void*)mipod_in->login_data.name, username, UNAME_SIZE);
     strncpy((void*)mipod_in->login_data.pin, pin, PIN_SIZE);
     send_command(MIPOD_LOGIN);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->operation == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
     if (mipod_in->status == STATE_FAILED) {
         mp_printf("Login Failed\r\n");
@@ -133,7 +133,7 @@ void login(char *username, char *pin) {
 void logout() {
     // drive DRM
     send_command(MIPOD_LOGOUT);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->operation == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
     return;
 }
@@ -144,7 +144,7 @@ void logout() {
 void query_player() {
     // drive DRM
     send_command(MIPOD_QUERY);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->operation == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
 
     mp_printf("Regions: %s", q_region_lookup(mipod_in->query_data, 0));
@@ -185,7 +185,7 @@ void query_song(char *song_name) {
     }
 
     send_command(MIPOD_QUERY_SONG);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->operation == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to finish
 }
 
@@ -212,7 +212,7 @@ void share_song(char *song_name, char *username) {
 
     // drive DRM
     send_command(MIPOD_SHARE);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start sorking
+    while (mipod_in->operation == MIPOD_STOP) continue; // wait for DRM to start sorking
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to share song
   
     if (mipod_in->status == STATE_FAILED) {
@@ -254,7 +254,7 @@ int play_song(char *song_name) {
 
     // drive the DRM
     send_command(MIPOD_PLAY);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start playing
+    while (mipod_in->operation == MIPOD_STOP) continue; // wait for DRM to start playing
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to start playing
 
     // play loop
@@ -265,7 +265,7 @@ int play_song(char *song_name) {
             fgets(usr_ops, USR_CMD_SZ, stdin);
 
             // exit playback loop if DRM has finished song
-            if (mipod_in->status == MIPOD_STOP) {
+            if (mipod_in->operation == MIPOD_STOP) {
                 mp_printf("Song finished\r\n");
                 return 0;
             }
@@ -330,7 +330,7 @@ void digital_out(char *song_name) {
 
     // drive DRM
     send_command(MIPOD_DIGITAL);
-    while (mipod_in->status == MIPOD_STOP) continue; // wait for DRM to start working
+    while (mipod_in->operation == MIPOD_STOP) continue; // wait for DRM to start working
     while (mipod_in->status == STATE_WORKING) continue; // wait for DRM to dump file
 
     if (mipod_in->status == STATE_FAILED)
