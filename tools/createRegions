@@ -17,6 +17,10 @@ def main(region_dict, file_name):
 
     mipodKey = os.urandom(64)
     aes_key = "".join(random.choices(string.ascii_letters + string.digits, k=16))
+
+    command = "./replace_AES_key.sh " + aes_key.encode().hex()
+    os.system(command)
+    print("Finishing aes key initialization.")
    
     nested_dic = {}
     nested_dic ["regions"] =  region_dict
