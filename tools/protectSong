@@ -120,21 +120,20 @@ def get_mp_key(region_secrets):
     mipod_key = region_secrets['mipod_key']
     mipod_key = list(map(int, mipod_key.split(",")))
     mipod_key = bytearray(mipod_key)
-    print(mipod_key)
+    # print(mipod_key)
     return mipod_key
 
 def get_owner_key(owner, user_secrets):
     user_hash = user_secrets[owner]['hash']
     user_hash = list(map(int, user_hash.split(",")))
     owner_key = bytearray(user_hash)
-    print(owner_key)
+    # print(owner_key)
     return owner_key
 
-def get_sig(drm_header, owner, user_secrets_path, region_secrets):
+def get_sig(drm_header, owner, user_secrets_path):
     global song_id, first_segment_size, nr_segments, mipod_key, mp_sig, owner_sig
     msg1 = song_id + drm_header.owner + struct.pack("=3s", str.encode('')) + drm_header.regions_id + drm_header.len_250ms + struct.pack('=I', nr_segments) + first_segment_size + drm_header.wavdata
 
-    mipod_key = get_mp_key(region_secrets)
     owner_key = get_owner_key(owner, user_secrets_path)
 
     m = hmac.new(mipod_key, digestmod="sha512")
@@ -216,6 +215,8 @@ class EncryptSong(object):
         wav_header = fileIn.read(44)
         self.wav_size = (struct.unpack('I', wav_header[4:8]))[0] - 44 + 8
 
+        print("Please wait if the song is too large...")
+
         self.first_segment_size = buffer_size
 
         p = int(self.wav_size / self.first_segment_size)
@@ -262,10 +263,7 @@ pad = init_pad()
 def main():
     parser = ArgumentParser(description='main interface to protect songs')
     parser.add_argument('--region-list', nargs='+', help='List of regions song can be played in', required=True)
-    parser.add_argument('--region-secrets-path', help='File location for the region secrets file',
-                        required=True)
-    parser.add_argument('--mipod-secrets-path', help='File location for the mipod secrets file',
-                        required=True)
+    parser.add_argument('--region-secrets-path', help='File location for the region secrets file', required=True)
     parser.add_argument('--outfile', help='path to save the protected song', required=True)
     parser.add_argument('--infile', help='path to unprotected song', required=True)
     parser.add_argument('--owner', help='owner of song', required=True)
@@ -276,12 +274,14 @@ def main():
     regions_secrets = json.load(open(os.path.abspath(args.region_secrets_path)))
     user_secrets = json.load(open(os.path.abspath(args.user_secrets_path)))
 
+    mipod_key = get_mp_key(regions_secrets)
+
     drm_header = CreateDrmHeader(args.infile, args.region_list, args.owner, user_secrets, regions_secrets) 
     protect_song = EncryptSong(args.infile, regions_secrets)
     # The size of the first segment will be caculated when encrypt the song
     
     first_segment_size = struct.pack('=I', protect_song.first_segment_size + trail_header_size)
-    mp_sig = get_sig(drm_header, args.owner, user_secrets, regions_secrets)
+    mp_sig = get_sig(drm_header, args.owner, user_secrets)
     write_header(args.outfile, drm_header)
     protect_song.save_song(args.outfile)
     print("Finishing protect song.")
