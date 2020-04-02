@@ -50,40 +50,25 @@ def init_sig():
 def init_pad():
     return struct.pack("=40s", str.encode(''))
 
-def get_mp_key(mipodkey_secrets_path):
-    mipod_key_dic = json.load(open(os.path.abspath(mipodkey_secrets_path)))
-    mipod_key = mipod_key_dic['mipod_key']
-    mipod_key = list(map(int, mipod_key.split(",")))
-    mipod_key = bytearray(mipod_key)
-    return mipod_key
-
-def get_owner_key(owner, user_secrets_path):
-    user = json.load(open(os.path.abspath(user_secrets_path)))
-    user_hash = user[owner]['hash']
-    user_hash = list(map(int, user_hash.split(",")))
-    owner_key = bytearray(user_hash)
-    # print(owner_key)
-    return owner_key
-
 
 class CreateDrmHeader(object):
     # first_segment_size = struct.pack("=I", 0)
-    def __init__(self, path_to_song, regions, user, user_secret_location, region_info):
+    def __init__(self, path_to_song, regions, user, user_secret_location, region_secrets):
         self.owner = self.get_owner_uid(user, user_secret_location)
-        self.regions_id = self.create_max_regions(region_info, regions)
+        self.regions_id = self.create_max_regions(region_secrets, regions)
         self.wavdata = self.read_wav_header(path_to_song) 
         self.len_250ms = self.find_len_250ms()
         self.shared_users = self.init_shared_users()
 
-    def get_owner_uid(self, user, user_secret_location):
-        user_secrets = json.load(open(os.path.abspath(user_secret_location)))
+    def get_owner_uid(self, user, user_secrets):
+        # user_secrets = json.load(open(os.path.abspath(user_secret_location)))
         uid = int(user_secrets[user]['id'])
         return struct.pack('=B', uid)
 
-    def create_max_regions(self, region_info, regions):
+    def create_max_regions(self, region_secrets, regions):
         rid = bytearray()
         for i in regions:
-            rid = rid + struct.pack("=B", int(region_info[str(i)]))
+            rid = rid + struct.pack("=B", int(region_secrets['regions'][str(i)]))
         for i in range(len(regions), 32):
             rid = rid + struct.pack("=B", 0)
         return rid
@@ -130,10 +115,26 @@ def write_header(outfile, drm_header):
     file.write(owner_sig) 
     file.close()   
 
-def get_sig(drm_header, owner, user_secrets_path):
+def get_mp_key(region_secrets):
+    # mipod_key_dic = json.load(open(os.path.abspath(mipodkey_secrets_path)))
+    mipod_key = region_secrets['mipod_key']
+    mipod_key = list(map(int, mipod_key.split(",")))
+    mipod_key = bytearray(mipod_key)
+    print(mipod_key)
+    return mipod_key
+
+def get_owner_key(owner, user_secrets):
+    user_hash = user_secrets[owner]['hash']
+    user_hash = list(map(int, user_hash.split(",")))
+    owner_key = bytearray(user_hash)
+    print(owner_key)
+    return owner_key
+
+def get_sig(drm_header, owner, user_secrets_path, region_secrets):
     global song_id, first_segment_size, nr_segments, mipod_key, mp_sig, owner_sig
     msg1 = song_id + drm_header.owner + struct.pack("=3s", str.encode('')) + drm_header.regions_id + drm_header.len_250ms + struct.pack('=I', nr_segments) + first_segment_size + drm_header.wavdata
 
+    mipod_key = get_mp_key(region_secrets)
     owner_key = get_owner_key(owner, user_secrets_path)
 
     m = hmac.new(mipod_key, digestmod="sha512")
@@ -146,9 +147,9 @@ def get_sig(drm_header, owner, user_secrets_path):
     owner_sig = m.digest()
 
 class EncryptSong(object):
-    def __init__(self, path_to_song):
+    def __init__(self, path_to_song, regions_secrets):
         self.wav_size = 0
-        self.key = self.gen_key()
+        self.key = self.get_aes_key(regions_secrets)
         # nr_segments = (struct.unpack('=I', nr_segments))[0]
         self.first_segment_size = str.encode("%04d" % int(16 * 1000 * 2))  # block size
         self.encrypt_str = self.encrypt_song(path_to_song)
@@ -157,24 +158,32 @@ class EncryptSong(object):
         self.next_segment_size = struct.pack('=I', 0)
         self.sig = init_sig()
 
+    def get_aes_key(self, regions_secrets):
+        aes_key = regions_secrets['aes_key'].encode()
+        command = "./replace_AES_key.sh " + aes_key.hex()
+        # print(command)
+        os.system(command)
+        print("Finishing key initialization.")
+        return Transform(aes_key)
+
     def gen_key(self):
         # if there is no aes.key file, generate one
         aes_key_file = 'global_provisioning/aes.key'
         if os.path.exists(aes_key_file):
-            key_file = open(aes_key_file, "rb")
+            key_file = open(aes_key_file, "r")
             aes_key = key_file.read()
             key_file.close()
         else:
-            aes_key = ("".join(random.choices(string.ascii_letters + string.digits, k=16))).encode()
-            key_file = open(aes_key_file, "wb")
+            aes_key = "".join(random.choices(string.ascii_letters + string.digits, k=16))
+            key_file = open(aes_key_file, "w")
             key_file.write(aes_key)
             key_file.close()
         
         # send key to the hardware
-        command = "./replace_AES_key.sh " + aes_key.hex()
+        command = "./replace_AES_key.sh " + (aes_key.encode()).hex()
         os.system(command)
         print("Finishing key initialization.")
-        return Transform(aes_key)
+        return Transform(aes_key.encode())
 
     def create_song_segment_trailer(self, en_segment, idx, next_segment_size):
         global mipod_key, song_id, pad, trail_header_size
@@ -264,16 +273,15 @@ def main():
     args = parser.parse_args()
 
     global first_segment_size, nr_segments, trail_header_size, mipod_key
-    regions = json.load(open(os.path.abspath(args.region_secrets_path)))
+    regions_secrets = json.load(open(os.path.abspath(args.region_secrets_path)))
+    user_secrets = json.load(open(os.path.abspath(args.user_secrets_path)))
 
-    mipod_key = get_mp_key(args.mipod_secrets_path)
-
-    drm_header = CreateDrmHeader(args.infile, args.region_list, args.owner, args.user_secrets_path, regions) 
-    protect_song = EncryptSong(args.infile)
+    drm_header = CreateDrmHeader(args.infile, args.region_list, args.owner, user_secrets, regions_secrets) 
+    protect_song = EncryptSong(args.infile, regions_secrets)
     # The size of the first segment will be caculated when encrypt the song
     
     first_segment_size = struct.pack('=I', protect_song.first_segment_size + trail_header_size)
-    mp_sig = get_sig(drm_header, args.owner, args.user_secrets_path)
+    mp_sig = get_sig(drm_header, args.owner, user_secrets, regions_secrets)
     write_header(args.outfile, drm_header)
     protect_song.save_song(args.outfile)
     print("Finishing protect song.")
