@@ -10,7 +10,9 @@ from argparse import ArgumentParser
 import hashlib
 
 
-def main(region_names, user_names, user_secrets, mipod_secrets, region_secrets, device_dir):
+def main(region_names, user_names, user_secrets, region_mipod_secrets, device_dir):
+    region_secrets = region_mipod_secrets["regions"]
+    #print(region_secrets)
     file_name = "device_secrets"
     if os.path.exists(device_dir):
         shutil.rmtree(device_dir)
@@ -55,7 +57,7 @@ struct user {{
     const uint8_t hash[PKEY_SIZE]; 
 }}; 
 static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join(rids)} }};
-static const uint8_t mipod_key[PKEY_SIZE] = {{{mipod_secrets["mipod_key"]} }}; //public signing key for the firmware size 64
+static const uint8_t mipod_key[PKEY_SIZE] = {{{region_mipod_secrets["mipod_key"]} }}; //public signing key for the firmware size 64
 static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{' + user_secrets[u]["salt"]+'}'+','+ '{'+user_secrets[u]["hash"]+'}'+'}' for u in user_names])} }};
 const uint32_t REGION_IDS[] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
 const char *REGION_NAMES[] = {{ {", ".join(['"' + r + '"' for r in region_secrets])} }};
@@ -73,18 +75,17 @@ def get_args():
                         nargs='+', required=True)
     parser.add_argument('--user-secrets-path', help='Path to user secrets file generated in createUsers.py',
                         required=True)
-    parser.add_argument('--mipod-secrets-path', help='Path to mipod secrets file generated in createUsers.py',
-                        required=True)
     parser.add_argument('--device-dir', help='Path to output any required information for the device.',
                         required=True)
     args = parser.parse_args()
-    return args.region_list, args.region_secrets_path, args.user_list, args.user_secrets_path, args.mipod_secrets_path,  args.device_dir
+    return args.region_list, args.region_secrets_path, args.user_list, args.user_secrets_path,  args.device_dir
 
 
 if __name__ == '__main__':
-    region_names, region_secrets, usernames, user_secrets, mipod_secrets, device_dir = get_args()
+    region_names, region_secrets, usernames, user_secrets, device_dir = get_args()
+    #print (region_names)
     print("generating device specific secrets")
     user_secrets = json.load(open(os.path.abspath(user_secrets)))
-    region_secrets = json.load(open(os.path.abspath(region_secrets)))
-    mipod_secrets = json.load(open(os.path.abspath(mipod_secrets)))
-    main(region_names, usernames, user_secrets, mipod_secrets, region_secrets, device_dir)
+    region_mipod_secrets = json.load(open(os.path.abspath(region_secrets)))
+    #print (region_mipod_secrets)
+    main(region_names, usernames, user_secrets, region_mipod_secrets, device_dir)
