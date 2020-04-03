@@ -35,9 +35,9 @@ def gen_bitstream(dev_path_pl, proj_name, vivado_batch, path_to_bits_tcl):
     """ Invoke Vivado batch mode to run gen_bitstream.tcl """
 
     proj_path = dev_path_pl + "/proj/" + proj_name + "/" + proj_name + ".xpr"
-    proj_bd = dev_path_pl + "/src/bd/system/system.bd"
+    proj_bd = dev_path_pl + "/proj/" + proj_name + "/" + proj_name + ".srcs/sources_1/bd/system/system.bd"
 
-    src_bitstream = vivado_batch + path_to_bits_tcl + " -tclargs --project_file " + proj_path
+    src_bitstream = vivado_batch + path_to_bits_tcl + " -tclargs --project_file " + proj_path + " --project_bd " + proj_bd
     print("\nRunning: " + src_bitstream)
     print("\n Beginning Synthesis, Implementation, and Bitstream Generation")
     os.system(src_bitstream)
