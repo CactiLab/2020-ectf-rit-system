@@ -1,9 +1,0 @@
-#!/usr/bin/env python3
-"""
-clear the tmp files we use.
-"""
-
-import os
-os.remove("device1/provisioned_user.secrets")
-os.remove("device1/mipodKey")
-os.remove("device1/aes.key")
