@@ -293,7 +293,7 @@ returns true/false for if the user is OK or not.
 */
 bool gen_check_user_secret(uint32_t uid) {
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
-    pbkdf2_hmac_sha512(kb, KDF_OUTSIZE, mb_state.pin_buffer, sizeof(mb_state.pin_buffer), provisioned_users[uid].salt, sizeof(provisioned_users[uid].salt), 400);
+    pbkdf2_hmac_sha512(kb, KDF_OUTSIZE, mb_state.pin_buffer, sizeof(mb_state.pin_buffer), provisioned_users[uid].salt, sizeof(provisioned_users[uid].salt), 120);
 
     return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
 }

@@ -26,7 +26,7 @@ def main(user_list, outfile):
     for user in user_list:
         perSalt = os.urandom(16)
         saltMap[user.split(":")[0]] = perSalt
-        userKey = hashlib.pbkdf2_hmac('sha512', str.encode(user.split(":")[1]), perSalt, 400)
+        userKey = hashlib.pbkdf2_hmac('sha512', str.encode(user.split(":")[1]), perSalt, 120)
         hashMap[user.split(":")[0]] = userKey
     try:
         user_dict = {user.split(":")[0]: {"id": num, "salt": ", ".join([ str(uSaltByte)  for uSaltByte in saltMap[user.split(":")[0]]]), "hash": ", ".join([ str(uHash)  for uHash in hashMap[user.split(":")[0]]])} for num, user in enumerate(user_list)}
