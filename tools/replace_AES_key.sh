@@ -1,6 +1,6 @@
 #!/bin/bash
 NEW_KEY="${1}"
-FILE="../pl/AES_IP/HLS_Decrypt/solution1/impl/ip/hdl/vhdl/decrypt_Key1.vhd"
+FILE="/ectf/pl/AES_IP/HLS_Decrypt/solution1/impl/ip/hdl/vhdl/decrypt_Key1.vhd"
 TMP="/tmp/fart.vhd"
 HEAD=28
 TAIL=67
