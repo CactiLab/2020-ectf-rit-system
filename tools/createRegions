@@ -4,12 +4,13 @@ Description: Generates system wide secrets containing all potential regions
 Use: Once per ecosystem of devices
 """
 import json
-import os
+import os, sys
 from argparse import ArgumentParser
 import random, string
 
 def replace_AES_key(aes_key):
-    command = "/ectf/tools/replace_AES_key.sh " + aes_key.encode().hex()
+    run_dir = sys.path[0]
+    command = run_dir + "/replace_AES_key.sh " + aes_key.encode().hex() + " " + run_dir
     os.system(command)
     print("Finishing aes key initialization.")
 

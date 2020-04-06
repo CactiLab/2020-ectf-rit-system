@@ -1,6 +1,7 @@
 #!/bin/bash
 NEW_KEY="${1}"
-FILE="/ectf/pl/AES_IP/HLS_Decrypt/solution1/impl/ip/hdl/vhdl/decrypt_Key1.vhd"
+RUN_DIR="${2}"
+FILE="${RUN_DIR}/../pl/AES_IP/HLS_Decrypt/solution1/impl/ip/hdl/vhdl/decrypt_Key1.vhd"
 TMP="/tmp/fart.vhd"
 HEAD=28
 TAIL=67
