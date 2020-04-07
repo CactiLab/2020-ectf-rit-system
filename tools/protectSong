@@ -23,17 +23,19 @@ import hashlib
 import hmac
 from itertools import zip_longest
 import array
+import struct
 
 class Secret(object):
   def __init__(self, secret=None):
-    temp = 0
     if secret is None: secret = song_id
     self.secret = secret
     self.reset()
   def counter(self):
     for i, c in enumerate(self.current):
       self.current[i] = c + 1
-      if self.current: break
+      if self.current: 
+        #print(self.current)
+        break
     #self.current.reverse()
     return self.current.tostring()
   def reset(self):
@@ -221,11 +223,20 @@ class EncryptSong(object):
         secret = Secret()
        # t = secret.counter
        # print(t)
-        segment_cipher = AES.new(self.key, AES.MODE_CTR, counter=secret.counter)
+
+        segment_cipher = AES.new(self.key, AES.MODE_CTR, counter = secret.counter)
         segment_str = fileIn.read(self.first_segment_size)
         segment_str = TransSeg(segment_str, len(segment_str))
+        print("Plain Text")
+        print(struct.unpack("16B",segment_str[0:16]))
+        #print(type(segment_str))
         encrypt_segment = segment_cipher.encrypt(segment_str)
+        #print(encrypt_segment)
+        print("Cipher Text")
+        print(struct.unpack("16B",encrypt_segment[0:16]))
         secret.reset()
+        print(secret.secret)
+        print(secret.counter())
         while fileIn.tell() < file_len:
             segment = fileIn.read(self.first_segment_size)
             if len(segment) < self.first_segment_size:

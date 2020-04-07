@@ -231,12 +231,13 @@ returns the actual length of the decrypted data (removing padding, for example)
 <len> = size of segment, including trailer and padding.
 <start> = start of segment.
 */
-static size_t decrypt_segment_data(void *start, size_t len) {
+static size_t decrypt_segment_data(void *start, size_t len,int flag) {
     //Initialize the AES module
 	int status = 0, block_offset = 0, count = 0;
     uint8_t *block_start = NULL;
     XDecrypt myDecrypt;
     uint8_t counter_array [16];
+    uint8_t temp_array [16];
     uint8_t counter_index = 15;
     XDecrypt_Config *myDecrypt_cfg;
 
@@ -262,7 +263,7 @@ static size_t decrypt_segment_data(void *start, size_t len) {
     count = len/16;  //55936
     
     //memset(counter_array,0,16*sizeof(uint8_t));
-    memcpy(counter_array,mb_state.current_song_header.song_id,16);
+    memcpy(counter_array,mb_state.current_song_header.song_id, 16);
     // for(int i=0;i<16;i++) {
     //     mb_printf("%x\r\n",counter_array[i]);
     // }
@@ -270,14 +271,29 @@ static size_t decrypt_segment_data(void *start, size_t len) {
     for (int i = 0; i < count; i++)
     {
         
-        block_offset = i*16;
+        block_offset = i * 16;
         block_start = start + block_offset;
-
-        Transpose(block_start);
+        if (i == 0 && flag == 0) {
+            mb_printf("Cipher Text before transpose: ");
+            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
+                mb_printf("%x ", *((uint8_t *)(block_start + arrayIndex)));
+            }
+             mb_printf("\r\n");
+        }
+       
+        Transpose(counter_array);
+        if (i == 0 && flag == 0) {
+            mb_printf("counter_array: ");
+            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
+                mb_printf("%x ", counter_array[arrayIndex]);
+            }
+            mb_printf("\r\n");
+        }
         //Transpose(counter_array);
        /* if ( counter_array[counter_index] == 255) {
             counter_index--;
         }
+        
         counter_array[counter_index] = counter_array[counter_index] + i;*/
        // mb_printf("%x %x", *((uint8_t *)block_start+1),*((uint8_t *)block_start+4));
         
@@ -289,15 +305,43 @@ static size_t decrypt_segment_data(void *start, size_t len) {
         XDecrypt_Start(&myDecrypt);
         while (!XDecrypt_IsDone(&myDecrypt));
         // XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, block_start, 16);
-        XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, counter_array, 16);
+        XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, temp_array, 16);
         // for(int i=0;i<16;i++) {
     //     mb_printf("%x\r\n",counter_array[i]);
     // }
-        for(int j=0;j<16;j++) {
-            *((uint8_t *)(block_start+j)) = *((uint8_t *)(block_start+j))^counter_array[j];
+        if (i == 0 && flag == 0) {
+            mb_printf("encrypted counter_array: ");
+            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
+                mb_printf("%x ", temp_array[arrayIndex]);
+            }
+            mb_printf("\r\n");
+
+            mb_printf("Cipher Text : ");
+            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
+                mb_printf("%x ", *((uint8_t *)(block_start + arrayIndex)));
+            }
+            mb_printf("\r\n");
         }
-       for (int j=15;j>=0;j--) {
+        for (int j = 0; j < 16; j++) {
+            *((uint8_t *)(block_start + j)) = *((uint8_t *)(block_start+j)) ^ temp_array[j];
+        }
+
+        if (i == 0 &&  flag == 0)
+        {   mb_printf("counter Array after Xor : ");
+            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
+                mb_printf("%x ", temp_array[arrayIndex]);
+            }
+            mb_printf("\r\n");
+            mb_printf("Plain Text : ");
+            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
+                mb_printf("%x ", *((uint8_t *)(block_start + arrayIndex)));
+            }
+            mb_printf("\r\n");
+        }
+
+        for (int j = 0; j <= 15; j++) {
             counter_array[j] = counter_array[j] + 1;
+
             if (counter_array[j]) {
                 break;
                 // counter_array[counter_index] = 0;
@@ -308,9 +352,19 @@ static size_t decrypt_segment_data(void *start, size_t len) {
                 // counter_array[counter_index-1]++; 
             }
        }
+
+        if (i == 0 &&  flag == 0) {
+            mb_printf("Incremnt Counter Array : ");
+            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
+                mb_printf("%x", counter_array[arrayIndex]);
+            }
+             mb_printf("\r\n");
+        }
+
     }
     return len;
 }
+
 static uint32_t get_uid_by_name(const char username[UNAME_SIZE]) {
     
     char c = username[0];
@@ -651,7 +705,8 @@ restart_playing:;
                 return true;
             }
         }
-        decrypt_segment_data(segment_buffer, raw);
+        
+        decrypt_segment_data(segment_buffer, raw, i);
 
         offset += raw;
         //update our position in the loaded song
@@ -772,7 +827,7 @@ bool digitize_song(void) {
         }
         //decrypt and remove padding/trailers
         raw = segsize - sizeof(struct segment_trailer);
-        decrypt_segment_data(segment_buffer, raw);
+        decrypt_segment_data(segment_buffer, raw,i);
 
         offset += raw;
         fseg += segsize;
