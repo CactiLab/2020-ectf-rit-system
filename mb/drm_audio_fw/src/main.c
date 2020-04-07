@@ -232,11 +232,12 @@ returns the actual length of the decrypted data (removing padding, for example)
 <start> = start of segment.
 */
 static size_t decrypt_segment_data(void *start, size_t len) {
-
     //Initialize the AES module
 	int status = 0, block_offset = 0, count = 0;
     uint8_t *block_start = NULL;
     XDecrypt myDecrypt;
+    uint8_t counter_array [16];
+    uint8_t counter_index = 15;
     XDecrypt_Config *myDecrypt_cfg;
 
     myDecrypt_cfg = XDecrypt_LookupConfig(XPAR_DECRYPT_0_DEVICE_ID);
@@ -260,21 +261,56 @@ static size_t decrypt_segment_data(void *start, size_t len) {
 
     count = len/16;  //55936
     
+    //memset(counter_array,0,16*sizeof(uint8_t));
+    memcpy(counter_array,mb_state.current_song_header.song_id,16);
+    // for(int i=0;i<16;i++) {
+    //     mb_printf("%x\r\n",counter_array[i]);
+    // }
+
     for (int i = 0; i < count; i++)
     {
+        
         block_offset = i*16;
         block_start = start + block_offset;
 
         Transpose(block_start);
-
-        XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16);
+        //Transpose(counter_array);
+       /* if ( counter_array[counter_index] == 255) {
+            counter_index--;
+        }
+        counter_array[counter_index] = counter_array[counter_index] + i;*/
+       // mb_printf("%x %x", *((uint8_t *)block_start+1),*((uint8_t *)block_start+4));
+        
+        // XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16);
+        XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, counter_array, 16);
+        // for(int i=0;i<16;i++) {
+    //     mb_printf("%x\r\n",counter_array[i]);
+    // }
         XDecrypt_Start(&myDecrypt);
         while (!XDecrypt_IsDone(&myDecrypt));
-        XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, block_start, 16);
+        // XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, block_start, 16);
+        XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, counter_array, 16);
+        // for(int i=0;i<16;i++) {
+    //     mb_printf("%x\r\n",counter_array[i]);
+    // }
+        for(int j=0;j<16;j++) {
+            *((uint8_t *)(block_start+j)) = *((uint8_t *)(block_start+j))^counter_array[j];
+        }
+       for (int j=15;j>=0;j--) {
+            counter_array[j] = counter_array[j] + 1;
+            if (counter_array[j]) {
+                break;
+                // counter_array[counter_index] = 0;
+                // int temp = counter_index-1;
+                // while(counter_array[temp]==255) {
+
+                // }
+                // counter_array[counter_index-1]++; 
+            }
+       }
     }
     return len;
 }
-
 static uint32_t get_uid_by_name(const char username[UNAME_SIZE]) {
     
     char c = username[0];

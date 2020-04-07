@@ -22,6 +22,22 @@ from Crypto.Cipher import AES
 import hashlib
 import hmac
 from itertools import zip_longest
+import array
+
+class Secret(object):
+  def __init__(self, secret=None):
+    temp = 0
+    if secret is None: secret = song_id
+    self.secret = secret
+    self.reset()
+  def counter(self):
+    for i, c in enumerate(self.current):
+      self.current[i] = c + 1
+      if self.current: break
+    #self.current.reverse()
+    return self.current.tostring()
+  def reset(self):
+    self.current = array.array('Q', self.secret)
 
 def Transform(string):
     keylength = 4
@@ -201,11 +217,15 @@ class EncryptSong(object):
         fill_block_size = 128 - int(remainder % 128)
         fill_block = bytearray(fill_block_size)
         
-        segment_cipher = AES.new(self.key, AES.MODE_ECB)
+        #segment_cipher = AES.new(self.key, AES.MODE_ECB)
+        secret = Secret()
+       # t = secret.counter
+       # print(t)
+        segment_cipher = AES.new(self.key, AES.MODE_CTR, counter=secret.counter)
         segment_str = fileIn.read(self.first_segment_size)
         segment_str = TransSeg(segment_str, len(segment_str))
         encrypt_segment = segment_cipher.encrypt(segment_str)
-
+        secret.reset()
         while fileIn.tell() < file_len:
             segment = fileIn.read(self.first_segment_size)
             if len(segment) < self.first_segment_size:
@@ -213,7 +233,8 @@ class EncryptSong(object):
             next_size = len(segment)
             segment = TransSeg(segment, len(segment))
             encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, next_size)
-            encrypt_segment = segment_cipher.encrypt(segment)    
+            encrypt_segment = segment_cipher.encrypt(segment) 
+            secret.reset()
             nr_segments += 1    
 
         encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, 0)
