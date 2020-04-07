@@ -22,24 +22,7 @@ from Crypto.Cipher import AES
 import hashlib
 import hmac
 from itertools import zip_longest
-import array
 import struct
-
-class Secret(object):
-  def __init__(self, secret=None):
-    if secret is None: secret = song_id
-    self.secret = secret
-    self.reset()
-  def counter(self):
-    for i, c in enumerate(self.current):
-      self.current[i] = c + 1
-      if self.current: 
-        #print(self.current)
-        break
-    #self.current.reverse()
-    return self.current.tostring()
-  def reset(self):
-    self.current = array.array('Q', self.secret)
 
 def Transform(string):
     keylength = 4
@@ -219,24 +202,35 @@ class EncryptSong(object):
         fill_block_size = 128 - int(remainder % 128)
         fill_block = bytearray(fill_block_size)
         
-        #segment_cipher = AES.new(self.key, AES.MODE_ECB)
-        secret = Secret()
-       # t = secret.counter
-       # print(t)
-
-        segment_cipher = AES.new(self.key, AES.MODE_CTR, counter = secret.counter)
+        
+        segment_cipher = AES.new(self.key, AES.MODE_CBC,IV=song_id)
         segment_str = fileIn.read(self.first_segment_size)
         segment_str = TransSeg(segment_str, len(segment_str))
-        print("Plain Text")
-        print(struct.unpack("16B",segment_str[0:16]))
-        #print(type(segment_str))
         encrypt_segment = segment_cipher.encrypt(segment_str)
-        #print(encrypt_segment)
-        print("Cipher Text")
-        print(struct.unpack("16B",encrypt_segment[0:16]))
-        secret.reset()
-        print(secret.secret)
-        print(secret.counter())
+
+        test_cipher = AES.new(self.key, AES.MODE_CBC,IV=song_id)
+        test_cipher_ecb = AES.new(self.key, AES.MODE_ECB)
+        test_plaintext = segment_str[0:16]
+        print ('test_plaintext: ', struct.unpack("16B",test_plaintext))
+        test_block = test_cipher.encrypt(test_plaintext)
+        print ('test_block_CBC: ', struct.unpack("16B",test_block))
+
+        test_plaintext_list = list(test_plaintext)
+        for temp in range(0,16):
+            test_plaintext_list[temp] = test_plaintext_list[temp] ^ song_id[temp]
+        test_plaintext = bytes(test_plaintext_list)
+        test_ecb_cipher = test_cipher_ecb.encrypt(test_plaintext)
+        print ('test_block_ECB: ',struct.unpack("16B",test_ecb_cipher))
+
+
+        test_block_ecb = test_cipher_ecb.decrypt(test_block)
+        print (struct.unpack("16B",test_block_ecb))
+        print(struct.unpack("16B",song_id))
+        for temp in range(0,15):
+            print(song_id[temp]," Xor with ",test_block_ecb[temp])
+            print(test_block_ecb[temp] ^ song_id[temp])
+        print(struct.unpack("16B",self.key))
+
         while fileIn.tell() < file_len:
             segment = fileIn.read(self.first_segment_size)
             if len(segment) < self.first_segment_size:
@@ -244,8 +238,8 @@ class EncryptSong(object):
             next_size = len(segment)
             segment = TransSeg(segment, len(segment))
             encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, next_size)
-            encrypt_segment = segment_cipher.encrypt(segment) 
-            secret.reset()
+            segment_cipher = AES.new(self.key, AES.MODE_CBC,IV=song_id)  
+            encrypt_segment = segment_cipher.encrypt(segment)
             nr_segments += 1    
 
         encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, 0)
@@ -263,7 +257,8 @@ trail_header_size = 84
 
 mp_sig = init_sig()
 owner_sig = init_sig()
-song_id = str.encode("".join(random.choices(string.digits, k=16))) # per song per random id
+song_id = str.encode('3924675245931581')
+# song_id = str.encode("".join(random.choices(string.digits, k=16))) # per song per random id
 first_segment_size = 0
 nr_segments = 0
 mipod_key = bytearray()

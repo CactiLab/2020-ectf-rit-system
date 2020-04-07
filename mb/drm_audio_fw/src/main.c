@@ -231,14 +231,14 @@ returns the actual length of the decrypted data (removing padding, for example)
 <len> = size of segment, including trailer and padding.
 <start> = start of segment.
 */
-static size_t decrypt_segment_data(void *start, size_t len,int flag) {
+static size_t decrypt_segment_data(void *start, size_t len) {
+
     //Initialize the AES module
 	int status = 0, block_offset = 0, count = 0;
     uint8_t *block_start = NULL;
+    uint8_t iv_array[16], counter_index = 15;
+    uint8_t prev_cipher[16];
     XDecrypt myDecrypt;
-    uint8_t counter_array [16];
-    uint8_t temp_array [16];
-    uint8_t counter_index = 15;
     XDecrypt_Config *myDecrypt_cfg;
 
     myDecrypt_cfg = XDecrypt_LookupConfig(XPAR_DECRYPT_0_DEVICE_ID);
@@ -261,105 +261,72 @@ static size_t decrypt_segment_data(void *start, size_t len,int flag) {
     }
 
     count = len/16;  //55936
-    
-    //memset(counter_array,0,16*sizeof(uint8_t));
-    memcpy(counter_array,mb_state.current_song_header.song_id, 16);
-    // for(int i=0;i<16;i++) {
-    //     mb_printf("%x\r\n",counter_array[i]);
-    // }
 
+    memcpy(iv_array,mb_state.current_song_header.song_id,16);
     for (int i = 0; i < count; i++)
     {
-        
-        block_offset = i * 16;
+        block_offset = i*16;
         block_start = start + block_offset;
-        if (i == 0 && flag == 0) {
-            mb_printf("Cipher Text before transpose: ");
-            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
-                mb_printf("%x ", *((uint8_t *)(block_start + arrayIndex)));
+
+        if (i == 0) {
+            xil_printf("input Cipher Text Before transpose: ");
+            for(int j = 0; j < 16; j++) {
+                xil_printf("%d ",*((uint8_t *)(block_start+j)) );
             }
-             mb_printf("\r\n");
+            xil_printf("\r\n");
         }
+        
+        memcpy(prev_cipher, block_start, 16);
+        Transpose(block_start);
+        if (i == 0) {
+            xil_printf("input Cipher Text after transpose: ");
+            for(int j = 0; j < 16; j++) {
+                xil_printf("%d ",*((uint8_t *)(block_start+j)) );
+            }
+            xil_printf("\r\n");
+        }
+        
        
-        Transpose(counter_array);
-        if (i == 0 && flag == 0) {
-            mb_printf("counter_array: ");
-            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
-                mb_printf("%x ", counter_array[arrayIndex]);
-            }
-            mb_printf("\r\n");
-        }
-        //Transpose(counter_array);
-       /* if ( counter_array[counter_index] == 255) {
-            counter_index--;
-        }
-        
-        counter_array[counter_index] = counter_array[counter_index] + i;*/
-       // mb_printf("%x %x", *((uint8_t *)block_start+1),*((uint8_t *)block_start+4));
-        
-        // XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16);
-        XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, counter_array, 16);
-        // for(int i=0;i<16;i++) {
-    //     mb_printf("%x\r\n",counter_array[i]);
-    // }
+        XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16);
         XDecrypt_Start(&myDecrypt);
         while (!XDecrypt_IsDone(&myDecrypt));
-        // XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, block_start, 16);
-        XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, temp_array, 16);
-        // for(int i=0;i<16;i++) {
-    //     mb_printf("%x\r\n",counter_array[i]);
-    // }
-        if (i == 0 && flag == 0) {
-            mb_printf("encrypted counter_array: ");
-            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
-                mb_printf("%x ", temp_array[arrayIndex]);
+        XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, block_start, 16);
+        if (i == 0) {
+            xil_printf("Plain Text Before transpose: ");
+            for(int j = 0; j < 16; j++) {
+                xil_printf("%d ",*((uint8_t *)(block_start+j)) );
             }
-            mb_printf("\r\n");
-
-            mb_printf("Cipher Text : ");
-            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
-                mb_printf("%x ", *((uint8_t *)(block_start + arrayIndex)));
-            }
-            mb_printf("\r\n");
+            xil_printf("\r\n");
         }
-        for (int j = 0; j < 16; j++) {
-            *((uint8_t *)(block_start + j)) = *((uint8_t *)(block_start+j)) ^ temp_array[j];
+        Transpose(block_start);
+        if (i == 0) {
+            xil_printf("Plain Text after transpose before Xor: ");
+            for(int j = 0; j < 16; j++) {
+                xil_printf("%d ",*((uint8_t *)(block_start+j)) );
+            }
+            xil_printf("\r\n");
         }
+         
 
-        if (i == 0 &&  flag == 0)
-        {   mb_printf("counter Array after Xor : ");
-            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
-                mb_printf("%x ", temp_array[arrayIndex]);
-            }
-            mb_printf("\r\n");
-            mb_printf("Plain Text : ");
-            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
-                mb_printf("%x ", *((uint8_t *)(block_start + arrayIndex)));
-            }
-            mb_printf("\r\n");
+        for(int j = 0;j < 16; j++) {
+            *((uint8_t *)(block_start+j)) = *((uint8_t *)(block_start+j)) ^ iv_array[j];
         }
-
-        for (int j = 0; j <= 15; j++) {
-            counter_array[j] = counter_array[j] + 1;
-
-            if (counter_array[j]) {
-                break;
-                // counter_array[counter_index] = 0;
-                // int temp = counter_index-1;
-                // while(counter_array[temp]==255) {
-
-                // }
-                // counter_array[counter_index-1]++; 
+        if (i == 0) {
+            xil_printf("IV: ");
+            for(int j=0;j<16;j++) {
+                xil_printf("%d ",iv_array[j]);
             }
-       }
-
-        if (i == 0 &&  flag == 0) {
-            mb_printf("Incremnt Counter Array : ");
-            for (int arrayIndex = 0; arrayIndex < 16; arrayIndex++) {
-                mb_printf("%x", counter_array[arrayIndex]);
+            xil_printf("\r\n");
+            xil_printf("plain Text: ");
+            for(int j = 0; j < 16; j++) {
+                xil_printf("%d ", *((uint8_t *)(block_start+j)) );
             }
-             mb_printf("\r\n");
+            xil_printf("\r\n");
+            // memcpy(cipherN_1,prev_cipher,16);
         }
+            // memcpy(cipherN_1,prev_cipher,16);
+        
+        memcpy(iv_array, prev_cipher, 16);
 
     }
     return len;
@@ -548,7 +515,7 @@ static bool load_song_segment(void *arm_start, size_t segsize, uint32_t segidx) 
        return true;
    }
    else {
-       mb_printf("Invalid song.\r\n");
+       mb_printf("Invalid segment.\r\n");
        return false;
    }
 }
@@ -705,8 +672,7 @@ restart_playing:;
                 return true;
             }
         }
-        
-        decrypt_segment_data(segment_buffer, raw, i);
+        decrypt_segment_data(segment_buffer, raw);
 
         offset += raw;
         //update our position in the loaded song
@@ -827,7 +793,7 @@ bool digitize_song(void) {
         }
         //decrypt and remove padding/trailers
         raw = segsize - sizeof(struct segment_trailer);
-        decrypt_segment_data(segment_buffer, raw,i);
+        decrypt_segment_data(segment_buffer, raw);
 
         offset += raw;
         fseg += segsize;
