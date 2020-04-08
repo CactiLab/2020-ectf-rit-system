@@ -159,7 +159,11 @@ class EncryptSong(object):
         self.sig = init_sig()
 
     def get_aes_key(self, regions_secrets):
-        aes_key = regions_secrets['aes_key'].encode()
+        # aes_key = regions_secrets['aes_key'].encode()
+        aes_key = regions_secrets['aes_key']
+        aes_key = list(map(int, aes_key.split(",")))
+        aes_key = bytearray(aes_key)
+        print(Transform(aes_key))
         return Transform(aes_key)
 
     def create_song_segment_trailer(self, en_segment, idx, next_segment_size):
@@ -203,42 +207,19 @@ class EncryptSong(object):
         fill_block = bytearray(fill_block_size)
         
         
-        segment_cipher = AES.new(self.key, AES.MODE_CBC,IV=song_id)
+        segment_cipher = AES.new(self.key, AES.MODE_ECB)
         segment_str = fileIn.read(self.first_segment_size)
         segment_str = TransSeg(segment_str, len(segment_str))
         encrypt_segment = segment_cipher.encrypt(segment_str)
-
-        test_cipher = AES.new(self.key, AES.MODE_CBC,IV=song_id)
-        test_cipher_ecb = AES.new(self.key, AES.MODE_ECB)
-        test_plaintext = segment_str[0:16]
-        print ('test_plaintext: ', struct.unpack("16B",test_plaintext))
-        test_block = test_cipher.encrypt(test_plaintext)
-        print ('test_block_CBC: ', struct.unpack("16B",test_block))
-
-        test_plaintext_list = list(test_plaintext)
-        for temp in range(0,16):
-            test_plaintext_list[temp] = test_plaintext_list[temp] ^ song_id[temp]
-        test_plaintext = bytes(test_plaintext_list)
-        test_ecb_cipher = test_cipher_ecb.encrypt(test_plaintext)
-        print ('test_block_ECB: ',struct.unpack("16B",test_ecb_cipher))
-
-
-        test_block_ecb = test_cipher_ecb.decrypt(test_block)
-        print (struct.unpack("16B",test_block_ecb))
-        print(struct.unpack("16B",song_id))
-        for temp in range(0,15):
-            print(song_id[temp]," Xor with ",test_block_ecb[temp])
-            print(test_block_ecb[temp] ^ song_id[temp])
-        print(struct.unpack("16B",self.key))
 
         while fileIn.tell() < file_len:
             segment = fileIn.read(self.first_segment_size)
             if len(segment) < self.first_segment_size:
                 segment = segment + fill_block
             next_size = len(segment)
-            segment = TransSeg(segment, len(segment))
             encrypt_song_str = encrypt_song_str + self.create_song_segment_trailer(encrypt_segment, nr_segments, next_size)
-            segment_cipher = AES.new(self.key, AES.MODE_CBC,IV=song_id)  
+
+            segment = TransSeg(segment, len(segment)) 
             encrypt_segment = segment_cipher.encrypt(segment)
             nr_segments += 1    
 

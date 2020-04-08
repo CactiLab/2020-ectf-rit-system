@@ -236,8 +236,6 @@ static size_t decrypt_segment_data(void *start, size_t len) {
     //Initialize the AES module
 	int status = 0, block_offset = 0, count = 0;
     uint8_t *block_start = NULL;
-    uint8_t iv_array[16], counter_index = 15;
-    uint8_t prev_cipher[16];
     XDecrypt myDecrypt;
     XDecrypt_Config *myDecrypt_cfg;
 
@@ -262,72 +260,17 @@ static size_t decrypt_segment_data(void *start, size_t len) {
 
     count = len/16;  //55936
 
-    memcpy(iv_array,mb_state.current_song_header.song_id,16);
     for (int i = 0; i < count; i++)
     {
         block_offset = i*16;
         block_start = start + block_offset;
 
-        if (i == 0) {
-            xil_printf("input Cipher Text Before transpose: ");
-            for(int j = 0; j < 16; j++) {
-                xil_printf("%d ",*((uint8_t *)(block_start+j)) );
-            }
-            xil_printf("\r\n");
-        }
-        
-        memcpy(prev_cipher, block_start, 16);
         Transpose(block_start);
-        if (i == 0) {
-            xil_printf("input Cipher Text after transpose: ");
-            for(int j = 0; j < 16; j++) {
-                xil_printf("%d ",*((uint8_t *)(block_start+j)) );
-            }
-            xil_printf("\r\n");
-        }
-        
-       
+           
         XDecrypt_Write_CipherText_Bytes(&myDecrypt, 0, block_start, 16);
         XDecrypt_Start(&myDecrypt);
         while (!XDecrypt_IsDone(&myDecrypt));
         XDecrypt_Read_PlainText_Bytes(&myDecrypt, 0, block_start, 16);
-        if (i == 0) {
-            xil_printf("Plain Text Before transpose: ");
-            for(int j = 0; j < 16; j++) {
-                xil_printf("%d ",*((uint8_t *)(block_start+j)) );
-            }
-            xil_printf("\r\n");
-        }
-        Transpose(block_start);
-        if (i == 0) {
-            xil_printf("Plain Text after transpose before Xor: ");
-            for(int j = 0; j < 16; j++) {
-                xil_printf("%d ",*((uint8_t *)(block_start+j)) );
-            }
-            xil_printf("\r\n");
-        }
-         
-
-        for(int j = 0;j < 16; j++) {
-            *((uint8_t *)(block_start+j)) = *((uint8_t *)(block_start+j)) ^ iv_array[j];
-        }
-        if (i == 0) {
-            xil_printf("IV: ");
-            for(int j=0;j<16;j++) {
-                xil_printf("%d ",iv_array[j]);
-            }
-            xil_printf("\r\n");
-            xil_printf("plain Text: ");
-            for(int j = 0; j < 16; j++) {
-                xil_printf("%d ", *((uint8_t *)(block_start+j)) );
-            }
-            xil_printf("\r\n");
-            // memcpy(cipherN_1,prev_cipher,16);
-        }
-            // memcpy(cipherN_1,prev_cipher,16);
-        
-        memcpy(iv_array, prev_cipher, 16);
-
     }
     return len;
 }
