@@ -10,7 +10,7 @@ import random, string
 
 def replace_AES_key(aes_key):
     run_dir = sys.path[0]
-    command = run_dir + "/replace_AES_key.sh " + aes_key.encode().hex() + " " + run_dir
+    command = run_dir + "/replace_AES_key.sh " + aes_key.hex() + " " + run_dir
     os.system(command)
     print("Finishing aes key initialization.")
 
@@ -22,16 +22,16 @@ def main(region_dict, file_name):
         return 0
 
     mipodKey = os.urandom(64)
-    aes_key = "".join(random.choices(string.ascii_letters + string.digits, k=16))
-    # aes_key = os.urandom(16)
+    # aes_key = "".join(random.choices(string.ascii_letters + string.digits, k=16))
+    aes_key = os.urandom(16)
 
     replace_AES_key(aes_key)
    
     nested_dic = {}
     nested_dic ["regions"] =  region_dict
     nested_dic ["mipod_key"] = ", ".join([  str(keyByte)  for keyByte in mipodKey])
-    nested_dic ["aes_key"] = aes_key
-    # nested_dic ["aes_key"] = ", ".join([  str(keyByte)  for keyByte in aes_key])
+    # nested_dic ["aes_key"] = aes_key
+    nested_dic ["aes_key"] = ", ".join([  str(keyByte)  for keyByte in aes_key])
 
     #nested_dic = {"d" : mipod_secrets}
    # print(nested_dic)

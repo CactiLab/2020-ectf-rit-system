@@ -159,11 +159,11 @@ class EncryptSong(object):
         self.sig = init_sig()
 
     def get_aes_key(self, regions_secrets):
-        aes_key = regions_secrets['aes_key'].encode()
-        # aes_key = regions_secrets['aes_key']
-        # aes_key = list(map(int, aes_key.split(",")))
-        # aes_key = bytearray(aes_key)
-        # print(Transform(aes_key))
+        # aes_key = regions_secrets['aes_key'].encode()
+        aes_key = regions_secrets['aes_key']
+        aes_key = list(map(int, aes_key.split(",")))
+        aes_key = bytearray(aes_key)
+        print(Transform(aes_key))
         return Transform(aes_key)
 
     def create_song_segment_trailer(self, en_segment, idx, next_segment_size):
