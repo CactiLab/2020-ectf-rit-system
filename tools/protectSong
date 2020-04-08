@@ -238,8 +238,8 @@ trail_header_size = 84
 
 mp_sig = init_sig()
 owner_sig = init_sig()
-song_id = str.encode('3924675245931581')
-# song_id = str.encode("".join(random.choices(string.digits, k=16))) # per song per random id
+# song_id = str.encode('3924675245931581')
+song_id = str.encode("".join(random.choices(string.digits, k=16))) # per song per random id
 first_segment_size = 0
 nr_segments = 0
 mipod_key = bytearray()
