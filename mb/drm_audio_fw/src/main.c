@@ -19,7 +19,6 @@
 #include "sha512.h"
 
 //HW global state stuff
-static XDecrypt myDecrypt;
 static XAxiDma sAxiDma;
 
 // static drm_header current_song_header;
@@ -38,14 +37,6 @@ void initialize_mb_State () {
 	mb_state.working = false;
 	mb_state.music_op = MIPOD_STOP;
 }
-
-// song play related operations
-static void pause_song(void);
-static void resume_song(void);
-static void stop_song(void);
-static void restart_song(void);
-static void forward_song(void);
-static void rewind_song(void);
 
 static bool play_song(void);
 static bool login_user(void);
@@ -134,9 +125,9 @@ int main() {
 check to see if the region rid is provisioned for the player
 returns true/false for success/fail
 */
-static bool valid_region(uint32_t rid) {
-    for (int i = 0; i < TOTAL_REGIONS; ++i) 
-        if (provisioned_regions[i] == rid)
+static bool valid_region(uint8_t rid) {
+    for (int i = 0; i < NUM_PROVISIONED_REGIONS; ++i) 
+        if (PROVISIONED_RIDS[i] == rid)
             return true;
     return false;
 }
@@ -156,7 +147,6 @@ static bool rid_to_region_name(char rid, char **region_name, int provisioned_onl
     return false;
 }
 
-
 // looks up the rid corresponding to the region name
 static bool region_name_to_rid(char *region_name, char *rid, int provisioned_only) {
     for (int i = 0; i < NUM_REGIONS; i++) {
@@ -170,6 +160,44 @@ static bool region_name_to_rid(char *region_name, char *rid, int provisioned_onl
     mb_printf("Could not find region name '%s'\r\n", region_name);
     *rid = INVALID_RID;
     return false;
+}
+
+static bool valid_user(uint8_t uid) {
+    for (int i = 0; i < NUM_PROVISIONED_USERS; ++i) 
+        if (PROVISIONED_UIDS[i] == uid)
+            return true;
+    return false;
+}
+
+// looks up the username corresponding to the uid
+int uid_to_username(char uid, char **username, int provisioned_only) {
+    for (int i = 0; i < NUM_USERS; i++) {
+        if (uid == USER_IDS[i] &&
+            (!provisioned_only || valid_user(uid))) {
+            *username = (char *)users[i].name;
+            return TRUE;
+        }
+    }
+
+    mb_printf("Could not find uid '%d'\r\n", uid);
+    uid = INVALID_UID;
+    *username = "<unknown user>";
+    return FALSE;
+}
+
+// looks up the uid corresponding to the username
+int username_to_uid(char *username, char *uid, int provisioned_only) {
+    for (int i = 0; i < NUM_USERS; i++) {
+        if (!strcmp(username, users[USER_IDS[i]].name) &&
+            (!provisioned_only || valid_user(USER_IDS[i]))) {
+            *uid = USER_IDS[i];
+            return TRUE;
+        }
+    }
+
+    mb_printf("Could not find username '%s'\r\n", username);
+    *uid = INVALID_UID;
+    return FALSE;
 }
 
 static bool verify_seg_blocksig(void *data_start, size_t sig_offset) {
@@ -203,13 +231,20 @@ data layout looks like:
 [....data....][signature]
 ^-data_start  ^-sig_offset
 */
-static bool verify_user_blocksig(void *data_start, size_t sig_offset, uint32_t uid) {
+static bool verify_user_blocksig(void *data_start, size_t sig_offset, uint8_t uid) {
     uint8_t sig[HASH_OUTSIZE];
 
-    memset(sig, 0, HASH_OUTSIZE);
-    hmac(provisioned_users[uid].hash, data_start, sig_offset, sig);
+    for (int i = 0; i < NUM_PROVISIONED_USERS; i++)
+    {
+        if (uid == PROVISIONED_UIDS[i])
+        {
+            memset(sig, 0, HASH_OUTSIZE);
+            hmac(users[uid].hash, data_start, sig_offset, sig);
 
-    return !memcmp(sig, (uint8_t *)data_start + sig_offset, HASH_OUTSIZE);
+            return !memcmp(sig, (uint8_t *)data_start + sig_offset, HASH_OUTSIZE);
+        }
+    }
+    return false;
 }
 
 /*
@@ -220,7 +255,7 @@ data layout looks like:
 ^-data_start  ^-sig_offset
 */
 static bool sign_user_block(void *data_start, size_t sig_offset) {
-    hmac(provisioned_users[mb_state.current_uid].hash, data_start, sig_offset, (uint8_t *)data_start + sig_offset);
+    hmac(users[mb_state.current_uid].hash, data_start, sig_offset, (uint8_t *)data_start + sig_offset);
     return true;
 }
 
@@ -275,27 +310,16 @@ static size_t decrypt_segment_data(void *start, size_t len) {
     return len;
 }
 
-static uint32_t get_uid_by_name(const char username[UNAME_SIZE]) {
-    
-    char c = username[0];
-    size_t i = 0;
-
-    for (i = 0; i < TOTAL_USERS; ++i) {
-        if (!memcmp(provisioned_users[i].name, username, UNAME_SIZE))
-            return i;
-    }
-    return INVALID_UID;
-}
 /*
 perform the pbkdf2 function on the key and copy it to 
 uid is the user to do so on. IDK if uid is actually something that we will use.
 returns true/false for if the user is OK or not.
 */
-bool gen_check_user_secret(uint32_t uid) {
+bool gen_check_user_secret(uint8_t uid) {
     uint8_t kb[KDF_OUTSIZE]; //derived key buffer
-    pbkdf2_hmac_sha512(kb, KDF_OUTSIZE, mb_state.pin_buffer, sizeof(mb_state.pin_buffer), provisioned_users[uid].salt, sizeof(provisioned_users[uid].salt), 120);
+    pbkdf2_hmac_sha512(kb, KDF_OUTSIZE, mb_state.pin_buffer, sizeof(mb_state.pin_buffer), users[uid].salt, sizeof(users[uid].salt), 120);
 
-    return !memcmp(kb, provisioned_users[uid].hash, HASH_OUTSIZE);
+    return !memcmp(kb, users[uid].hash, HASH_OUTSIZE);
 }
 
 /*
@@ -306,15 +330,17 @@ returns false for failure
 bool login_user(void)
 {
     char tmpnam[UNAME_SIZE];
-    uint32_t user = NULL;
+    uint8_t user = NULL;
     if (mb_state.logged_in_user) {
         mb_printf("Already logged in. Please logout first.\r\n");
         return true;
     } else {
         memcpy(tmpnam, mipod_in->login_data.name, UNAME_SIZE);
         mb_printf("User Name is: %s\r\n", tmpnam);
-        user = get_uid_by_name(tmpnam);
-        if (mb_state.current_uid == INVALID_UID && user == INVALID_UID) {
+        // username_to_uid(tmpnam, &user, TRUE);
+        // mb_printf("%x \r\n", user);
+        // mb_state.current_uid == INVALID_UID &&
+        if (! username_to_uid(tmpnam, &user, TRUE)) {
             mb_printf("Invalid user!\r\n");
             return false;
         }
@@ -553,7 +579,7 @@ restart_playing:;
     //loop through all the segments in the file, make sure the update size is correct
     DMA_flag = 0;
 
-    for (; i < mb_state.current_song_header.nr_segments; ++i) {
+    for (; i < mb_state.current_song_header.nr_segments; i++) {
     	uint32_t raw = segsize - sizeof(struct segment_trailer);
         // check for interrupt to stop playback
         while (InterruptProcessed){
@@ -632,15 +658,15 @@ unload:;
 }
 
 bool startup_query(void) {
-    for (int i = 0; i < TOTAL_REGIONS; i++){
-        strncpy((char *)q_region_lookup(mipod_in->query_data, i), REGION_NAMES[provisioned_regions[i]], UNAME_SIZE);
+    for (int i = 0; i < NUM_PROVISIONED_REGIONS; i++){
+        strncpy((char *)q_region_lookup(mipod_in->query_data, i), REGION_NAMES[PROVISIONED_RIDS[i]], UNAME_SIZE);
     } 
     
-    for (size_t j = 0; j < TOTAL_USERS; j++) {
-        strncpy((char *)q_user_lookup(mipod_in->query_data, j), provisioned_users[j].name, UNAME_SIZE);
+    for (size_t j = 0; j < NUM_PROVISIONED_USERS; j++) {
+        strncpy((char *)q_user_lookup(mipod_in->query_data, j), users[PROVISIONED_UIDS[j]].name, UNAME_SIZE);
     }
 
-    mb_printf("Queried player (%d regions, %d users)\r\n", TOTAL_REGIONS, TOTAL_USERS);
+    mb_printf("Queried player (%d regions, %d users)\r\n", NUM_PROVISIONED_REGIONS, NUM_PROVISIONED_USERS);
     mipod_in->status = STATE_SUCCESS;
     return true;
 }
@@ -649,7 +675,8 @@ bool query_song(void) {
     char *name = NULL;
     int count = 0;
     memcpy(&mb_state.current_song_header, &mipod_in->digital_data.play_data.drm, sizeof(drm_header));
-    mb_printf("Song Owner: %s \r\n", provisioned_users[mb_state.current_song_header.ownerID].name);
+
+    mb_printf("Song Owner: %s \r\n", users[mb_state.current_song_header.ownerID].name);
     rid_to_region_name(mb_state.current_song_header.regions[0], &name, false);
 	xil_printf("MB> Regions: %s", name);
     for (int i = 1; i < NUM_REGIONS; i++){
@@ -663,9 +690,9 @@ bool query_song(void) {
     	if (mb_state.current_song_header.shared_users[j]) {
     		count++;
     		if (count==1) {
-    			xil_printf("%s ", provisioned_users[j].name);
+    			xil_printf("%s ", users[j].name);
     		} else {
-    			xil_printf(", %s ", provisioned_users[j].name);
+    			xil_printf(", %s ", users[j].name);
     		}
     	}
     }
@@ -771,9 +798,9 @@ bool share_song(void)
         mb_printf("You are not owner of the song!!!\r\n");
         goto fail;
     }
-    targetuid = get_uid_by_name(target);
+    // username_to_uid(target, &targetuid, TRUE);
     tempOwner = mb_state.current_song_header.ownerID;
-    if (targetuid == INVALID_UID || targetuid == tempOwner) {
+    if ((! username_to_uid(target, &targetuid, TRUE)) || targetuid == tempOwner) {
         mb_printf("Invalid Target.\r\n");
         goto fail;
     }
