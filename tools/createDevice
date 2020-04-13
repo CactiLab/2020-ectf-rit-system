@@ -48,19 +48,29 @@ def main(region_names, user_names, user_secrets, region_mipod_secrets, device_di
 #ifndef SECRETS_H
 #define SECRETS_H
 #include "constants.h"
-#define TOTAL_USERS {len(user_names)}
-#define TOTAL_REGIONS {len(region_names)}
+
 #define NUM_REGIONS {len(region_secrets)}
+#define NUM_PROVISIONED_REGIONS {len(region_names)}
+#define NUM_PROVISIONED_USERS {len(user_names)}
+#define NUM_USERS {len(user_secrets)}
+
+
 struct user {{
     const char name[UNAME_SIZE]; 
     const uint8_t salt[SALT_SIZE]; 
     const uint8_t hash[PKEY_SIZE]; 
 }}; 
-static uint32_t provisioned_regions[TOTAL_REGIONS] = {{ {", ".join(rids)} }};
+
 static const uint8_t mipod_key[PKEY_SIZE] = {{{region_mipod_secrets["mipod_key"]} }}; //public signing key for the firmware size 64
-static struct user provisioned_users[TOTAL_USERS] = {{ {", ".join(['{"' + u + '",'+'{' + user_secrets[u]["salt"]+'}'+','+ '{'+user_secrets[u]["hash"]+'}'+'}' for u in user_names])} }};
-const uint32_t REGION_IDS[] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
+static struct user users[] = {{ {", ".join(['{"' + u + '",'+'{' + user_secrets[u]["salt"]+'}'+','+ '{'+user_secrets[u]["hash"]+'}'+'}' for u in user_secrets])} }};
+const uint8_t USER_IDS[] = {{ {", ".join([str(user_secrets[u]['id']) for u in user_secrets])} }};
+const uint8_t PROVISIONED_UIDS[] = {{ {", ".join(uids)} }};
+
 const char *REGION_NAMES[] = {{ {", ".join(['"' + r + '"' for r in region_secrets])} }};
+const uint8_t REGION_IDS[] = {{ {", ".join([str(r) for r in region_secrets.values()])} }};
+const uint8_t PROVISIONED_RIDS [] = {{ {", ".join(rids)} }};
+
+
 #endif // SECRETS_H
 ''')
 
